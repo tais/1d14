@@ -267,8 +267,10 @@ BOOLEAN InitializeInputManager(void)
 
 	InitializeCriticalSection(&gcsInputQueueLock);
 
-	ghMouseHook = SetWindowsHookEx(WH_MOUSE, (HOOKPROC) MouseHandler, (HINSTANCE) 0, GetCurrentThreadId());
-	DbgMessage(TOPIC_INPUT, DBG_LEVEL_2, String("Set mouse hook returned %d", ghMouseHook));
+	// The Win32 WH_MOUSE hook is intentionally NOT installed under the SDL3
+	// port: SDL pumps Win32 messages on this same thread, so a live thread
+	// hook would still fire and double-queue every mouse event. Mouse input
+	// now arrives through sgp/sdl_input.cpp (SgpHandleSDLEvent).
 	return TRUE;
 }
 
@@ -277,9 +279,11 @@ void ShutdownInputManager(void)
 	// There's very little to do when shutting down the input manager. In the future, this is where the keyboard and
 	// mouse hooks will be destroyed
 	UnRegisterDebugTopic(TOPIC_INPUT, "Input Manager");
+	// No Win32 keyboard/mouse hooks are installed under the SDL3 port, so
+	// there is nothing to unhook here (see InitializeInputManager).
 //	UnhookWindowsHookEx(ghKeyboardHook);
-	UnhookWindowsHookEx(ghMouseHook);
-	
+//	UnhookWindowsHookEx(ghMouseHook);
+
 	DeleteCriticalSection(&gcsInputQueueLock);
 }
 
@@ -1632,19 +1636,10 @@ BOOLEAN InputEventInside(InputAtom *Event, UINT32 uiX1, UINT32 uiY1, UINT32 uiX2
 void DequeueAllKeyBoardEvents()
 {
 	InputAtom	InputEvent;
-	MSG			KeyMessage;
 
-
-	//dequeue all the events waiting in the windows queue
-	//Give them proper processing like the old window hook method used to.
-	while( PeekMessage( &KeyMessage, ghWindow, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE ) )
-	{
-		TranslateMessage( &KeyMessage);
-		DispatchMessage( &KeyMessage);
-	}
-
-	//Now deque all the events waiting in the SGP queue
-	//Including those that were just posted in the code above
+	// Under the SDL3 port SDL owns the message pump, so the old
+	// PeekMessage/TranslateMessage/DispatchMessage(WM_KEYFIRST..WM_KEYLAST)
+	// drain is gone. Just flush everything already sitting in the SGP queue.
 	while (DequeueEvent(&InputEvent) == TRUE)
 	{
 		//dont do anything
