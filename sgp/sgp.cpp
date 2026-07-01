@@ -474,8 +474,46 @@ private:
 //	}
 //};
 
+// Make the process DPI-aware at startup. SDL3 does not set DPI awareness for
+// us and we cannot embed a manifest here, so do it programmatically before any
+// window exists. Without this, Windows virtualizes window/mouse coordinates on
+// a scaled (HiDPI) display: GetCursorPos()+ScreenToClient() (which drives the
+// game's hit-testing in gameloop.cpp) and the SDL event coordinates (which
+// drive the software cursor) then disagree, so the cursor is drawn in one place
+// while clicks register in another. Resolve the API dynamically so we don't
+// depend on a particular Windows SDK header level.
+static void MakeProcessDpiAware(void)
+{
+	if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll"))
+	{
+		typedef BOOL (WINAPI *PFN_SetCtx)(HANDLE);
+		if (PFN_SetCtx p = (PFN_SetCtx)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext"))
+		{
+			// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)-4 (Win10 1703+),
+			// PER_MONITOR_AWARE == (HANDLE)-3 as a fallback.
+			if (p((HANDLE)-4)) return;
+			if (p((HANDLE)-3)) return;
+		}
+	}
+	if (HMODULE hShcore = LoadLibraryW(L"Shcore.dll"))
+	{
+		typedef HRESULT (WINAPI *PFN_SetAwareness)(int);
+		if (PFN_SetAwareness p = (PFN_SetAwareness)GetProcAddress(hShcore, "SetProcessDpiAwareness"))
+		{
+			p(2); // PROCESS_PER_MONITOR_DPI_AWARE
+			FreeLibrary(hShcore);
+			return;
+		}
+		FreeLibrary(hShcore);
+	}
+	SetProcessDPIAware(); // Vista+ system-DPI fallback
+}
+
 int main(int argc, char** argv)
 {
+	// Must run before SDL_Init / any window creation (see MakeProcessDpiAware).
+	MakeProcessDpiAware();
+
 #ifdef _DEBUG
 	// Use this one ONLY if you're having memory corruption issues that can be repeated in a short time
 	// Otherwise it will just run out of memory.
