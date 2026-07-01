@@ -51,10 +51,13 @@ jobs:
       - name: Build
         run: cmake --build build/ -- -v
 
-      - name: Stage runtime DLL
+      - name: Stage runtime DLLs
         if: always()
         shell: bash
-        run: cp -v ext/SDL3/lib/x86/SDL3.dll build/ 2>/dev/null || true
+        run: |
+          cp -v ext/SDL3/lib/x86/SDL3.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/SDL3_mixer.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/optional/*.dll build/ 2>/dev/null || true
 
       - name: List artifacts
         shell: bash
@@ -68,5 +71,5 @@ jobs:
           path: |
             build/*.exe
             build/*.pdb
-            build/SDL3.dll
+            build/*.dll
           if-no-files-found: ignore
