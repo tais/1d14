@@ -1224,27 +1224,20 @@ static void PopulateSectionFromCommandLine(vfs::PropertyContainer &oProps, vfs::
 static LONG __stdcall SGPExceptionFilter(int exceptionCount, EXCEPTION_POINTERS* pExceptInfo)
 {
 #ifdef ENABLE_EXCEPTION_HANDLING
-	extern BOOL ERGetFirstModuleException(EXCEPTION_POINTERS*, HMODULE, LPSTR, INT, LPSTR, INT, INT *);
-	extern STR GetExceptionString( DWORD uiExceptionCode );
-	CHAR funcName[64], sourceName[MAX_PATH];
-	INT lineNum = 0;
+	// GetExceptionString() / ERGetFirstModuleException() / _FailMessage() were
+	// never implemented in this codebase. RecordExceptionInfo() (in
+	// debug_win_util.cpp) already writes a symbolized backtrace of the crash to
+	// stack_trace.log, which is what we need; CallGameLoop() then retries a few
+	// times and finally shows the "Unable to recover." box.
 	if (exceptionCount >= 1)
 	{
-		bool showAssert = true;
-		__try{
+		__try
+		{
 			// the exception handler writer can fail with exceptions too
 			RecordExceptionInfo(pExceptInfo);
-
-			LPCSTR exceptMsg = GetExceptionString(pExceptInfo->ExceptionRecord->ExceptionCode);
-			if ( ERGetFirstModuleException(pExceptInfo, NULL, funcName, _countof(funcName), sourceName, _countof(sourceName), &lineNum ) )
-			{
-				_FailMessage(exceptMsg, lineNum, funcName, sourceName);
-				showAssert = false;
-			}
-		} __except (EXCEPTION_EXECUTE_HANDLER) {}
-		if (showAssert) AssertMsg(FALSE, "Unhanded exception processing GameLoop unable to recover.");
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {}
 	}
-
 #endif
 
 	return EXCEPTION_EXECUTE_HANDLER;
