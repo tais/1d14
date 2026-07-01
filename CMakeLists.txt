@@ -167,10 +167,14 @@ foreach(app IN LISTS ApplicationTargets)
   endforeach()
 
   # for SGP only
-  # NOTE (SDL3 port, step 1): ddraw.lib + fmodvc.lib are still linked here while
-  # DirectDraw video and FMOD audio remain in place; SDL3 is added alongside so
-  # the build integration is proven before the video/input seams are swapped.
-  target_link_libraries(${app}_sgp PRIVATE "ddraw.lib" "${PROJECT_SOURCE_DIR}/fmodvc.lib" SDL3::SDL3)
+  # SDL3 port: ddraw.lib dropped — video.cpp no longer calls DirectDrawCreate /
+  # IID_IDirectDraw2 (the only ddraw.lib import symbols). DirectDraw Calls.cpp /
+  # DirectX Common.cpp stay compiled: they only make COM vtable calls + use
+  # DDERR_* constants (no import symbols) and provide the wrapper symbols a few
+  # dead VObject helpers still reference. fmodvc.lib stays (FMOD audio kept in
+  # phase 1; DirectSound is orthogonal to DirectDraw and still works via the
+  # SDL window's HWND). SDL3 owns the window/video/input.
+  target_link_libraries(${app}_sgp PRIVATE "${PROJECT_SOURCE_DIR}/fmodvc.lib" SDL3::SDL3)
   target_link_libraries(${app}_sgp PRIVATE libpng)
   target_compile_definitions(${app}_sgp PRIVATE ${compilationFlags} ${debugFlags} NO_ZLIB_COMPRESSION)
 endforeach()

@@ -26,6 +26,11 @@ extern UINT32				 guiMouseBufferState;	// BUFFER_READY, BUFFER_DIRTY, BUFFER_DIS
 //#ifdef WINFONTS
 extern UINT32 CurrentSurface;
 //#endif
+
+// SDL renderer accessor - sgp.cpp's main loop reaches the renderer through this.
+// (Forward-declared so video.h stays free of the SDL headers.)
+struct SDL_Renderer;
+extern SDL_Renderer* SGP_GetSDLRenderer(void);
 /*
 #ifdef __cplusplus
 extern "C" {

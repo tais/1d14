@@ -1,6 +1,5 @@
 	#include "types.h"
 	#include <windows.h>
-		#include "video.h"
 	#include "timer.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -10,50 +9,51 @@
 UINT32 guiStartupTime;
 UINT32 guiCurrentTime;
 
-void CALLBACK Clock( HWND hWindow, UINT uMessage, UINT idEvent, DWORD dwTime )
+// SGP 'local' millisecond clock. This used to advance from a Win32 WM_TIMER
+// (SetTimer(ghWindow, MAIN_TIMER_ID, 10, Clock)) dispatched by the game's
+// message pump. With SDL3 owning the window there is no GetMessage/Dispatch
+// loop, so instead we sample GetTickCount() on demand: guiCurrentTime is the
+// elapsed milliseconds since startup (loopback-corrected), computed each time
+// the clock is read. Semantics of guiStartupTime/guiCurrentTime are unchanged.
+static UINT32 SampleCurrentTime(void)
 {
-	guiCurrentTime = GetTickCount();
-	if (guiCurrentTime < guiStartupTime)
-	{ // Adjust guiCurrentTime because of loopback on the timer value
-	guiCurrentTime = guiCurrentTime + (0xffffffff - guiStartupTime);
+	UINT32 uiNow = GetTickCount();
+	if (uiNow < guiStartupTime)
+	{	// Adjust because of loopback (wrap-around) on the tick value
+		return uiNow + (0xffffffff - guiStartupTime);
 	}
-	else
-	{ // Adjust guiCurrentTime because of loopback on the timer value
-	guiCurrentTime = guiCurrentTime - guiStartupTime;
-	}
+	// Normal case
+	return uiNow - guiStartupTime;
 }
 
 BOOLEAN InitializeClockManager(void)
 {
-
 	// Register the start time (use WIN95 API call)
 	guiCurrentTime = guiStartupTime = GetTickCount();
-	SetTimer(ghWindow, MAIN_TIMER_ID, 10, (TIMERPROC)Clock);
-
 
 	return TRUE;
 }
 
 void	ShutdownClockManager(void)
 {
-
-	// Make sure we kill the timer
-	KillTimer(ghWindow, MAIN_TIMER_ID);
-
+	// Nothing to do: the on-demand clock owns no Win32 timer to kill.
 }
 
 TIMER	GetClock(void)
 {
+	guiCurrentTime = SampleCurrentTime();
 	return guiCurrentTime;
 }
 
 TIMER	SetCountdownClock(UINT32 uiTimeToElapse)
 {
+	guiCurrentTime = SampleCurrentTime();
 	return (guiCurrentTime + uiTimeToElapse);
 }
 
 UINT32 ClockIsTicking(TIMER uiTimer)
 {
+	guiCurrentTime = SampleCurrentTime();
 	if (uiTimer > guiCurrentTime)
 	{ // Well timer still hasn't elapsed
 	return (uiTimer - guiCurrentTime);

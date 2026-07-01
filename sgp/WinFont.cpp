@@ -422,11 +422,9 @@ void PrintWinFont( UINT32 uiDestBuf, INT32 iFont, INT32 x, INT32 y, STR16 pFontS
 	va_list				 argptr;
 	CHAR16									string[512];
 	HVSURFACE				hVSurface;
-	LPDIRECTDRAWSURFACE2	pDDSurface;
-	HDC					 hdc;
 	HWINFONT				*pWinFont;
 	int					 len;
-	
+
 	pWinFont = GetWinFont( iFont );
 
 	if ( pWinFont == NULL )
@@ -441,23 +439,10 @@ void PrintWinFont( UINT32 uiDestBuf, INT32 iFont, INT32 x, INT32 y, STR16 pFontS
 	// Get surface...
 	GetVideoSurface( &hVSurface, uiDestBuf );
 
-	pDDSurface = GetVideoSurfaceDDSurface( hVSurface );
-
-	IDirectDrawSurface2_GetDC( pDDSurface, &hdc );
-
-	SelectObject(hdc, pWinFont->hFont );
-	SetTextColor( hdc, pWinFont->ForeColor );
-	SetBkColor(hdc, pWinFont->BackColor );
-	SetBkMode(hdc, TRANSPARENT);
-	SetTextAlign(hdc, TA_TOP|TA_LEFT);
-
-	if (y - pWinFont->InternalLeading >=0)
-	{
-		y -= pWinFont->InternalLeading;
-	}
-	TextOutW( hdc, x, y, string, len );
-
-	IDirectDrawSurface2_ReleaseDC( pDDSurface, hdc );
+	// TODO: minimal SDL3 port — WinFont GDI text disabled; English uses bitmap fonts. Reinstate via a 16bpp DIBSection over GetVideoSurfaceBuffer() later.
+	// With plain heap framebuffers there is no DirectDraw HDC: GetVideoSurfaceDDSurface() now returns
+	// a raw buffer pointer and calling IDirectDrawSurface2_GetDC() on it would crash. The GDI
+	// GetDC / TextOutW / ReleaseDC draw path is therefore stubbed out, making PrintWinFont a safe no-op.
 
 }
 
