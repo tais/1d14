@@ -81,12 +81,6 @@ UINT16	gusTailIndex;
 // ATE: Added to signal if we have had input this frame - cleared by the SGP main loop
 BOOLEAN		gfSGPInputReceived = FALSE;
 
-// This is the WIN95 hook specific data and defines used to handle the keyboard and
-// mouse hook
-
-HHOOK ghKeyboardHook;
-HHOOK ghMouseHook;
-
 // If the following pointer is non NULL then input characters are redirected to
 // the related string
 
@@ -103,129 +97,6 @@ void	QueueEvent(UINT16 ubInputEvent, UINT32 usParam, UINT32 uiParam);
 void	RedirectToString(UINT16 uiInputCharacter);
 void	HandleSingleClicksAndButtonRepeats( void );
 void	AdjustMouseForWindowOrigin(void);
-
-// These are the hook functions for both keyboard and mouse
-
-LRESULT CALLBACK KeyboardHandler(int Code, WPARAM wParam, LPARAM lParam)
-{
-	if (Code < 0) // Do not handle this message, pass it on to another window
-		return CallNextHookEx(ghKeyboardHook, Code, wParam, lParam);
-
-	if (lParam & TRANSITION_MASK) // The key has been released
-		KeyUp(wParam, lParam);		//gfSGPInputReceived =	TRUE;
-	else
-	{ // Key was up
-	KeyDown(wParam, lParam);
-	gfSGPInputReceived =	TRUE;
-	}
-	return TRUE;
-}
-
-
-LRESULT CALLBACK MouseHandler(int Code, WPARAM wParam, LPARAM lParam)
-{
-	UINT32 uiParam;
-	POINT mpos;
-	MOUSEHOOKSTRUCTEX* p_mhs;
-
-	if (Code < 0) // Do not handle this message, pass it on to another window
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-	
-	p_mhs = (MOUSEHOOKSTRUCTEX*)lParam;
-
-	mpos = ((MOUSEHOOKSTRUCT *)lParam)->pt;
-	ScreenToClient( ghWindow, &mpos);
-	gusMouseXPos = (INT16)mpos.x;
-	gusMouseYPos = (INT16)mpos.y;
-	uiParam = gusMouseYPos;
-	uiParam = uiParam << 16;
-	uiParam = uiParam | gusMouseXPos;
-
-	switch (wParam)
-	{
-	case WM_XBUTTONDOWN://** code is working
-		if( p_mhs->mouseData== (XBUTTON1<<16) ) 			//MessageBeep(-1);
-		{
-			gfX1ButtonState = TRUE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X1_BUTTON_DOWN, 0, uiParam);
-		}
-		if( p_mhs->mouseData== (XBUTTON2<<16) ) 			//MessageBeep(0x00000040L);
-		{
-			gfX2ButtonState = TRUE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X2_BUTTON_DOWN, 0, uiParam);
-		}
-		break;
-	case WM_XBUTTONUP://** code is working
-		if( p_mhs->mouseData== (XBUTTON1<<16) )
-		{
-			gfX1ButtonState = FALSE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X1_BUTTON_UP, 0, uiParam);
-		}
-		if( p_mhs->mouseData== (XBUTTON2<<16) )
-		{
-			gfX2ButtonState = FALSE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X2_BUTTON_UP, 0, uiParam);
-		}
-		break;
-	case WM_MOUSEWHEEL:
-		gsMouseWheelDeltaValue = GetMouseWheelDeltaValue(((MOUSEHOOKSTRUCTEX *)lParam)->mouseData);//dnl ch4 210909
-		if(p_mhs->mouseData==(WHEEL_DELTA<<16))  //up	MessageBeep(-1);
-			QueueEvent(MOUSE_WHEEL_UP, 0, uiParam);
-		if(p_mhs->mouseData==(-WHEEL_DELTA<<16)) //dn  MessageBeep(0x00000040L);
-			QueueEvent(MOUSE_WHEEL_DOWN, 0, uiParam);
-		break;
-	case WM_MBUTTONDOWN:
-		gfMiddleButtonState= TRUE;			//Set that we have input
-		gfSGPInputReceived =	TRUE;//Set that we have input
-		QueueEvent(MIDDLE_BUTTON_DOWN, 0, uiParam);// Trigger an input event
-		break;
-	case WM_MBUTTONUP:
-		gfMiddleButtonState= FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(MIDDLE_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_LBUTTONDOWN: 
-		gfLeftButtonState = TRUE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(LEFT_BUTTON_DOWN, 0, uiParam);
-		break;
-	case WM_LBUTTONUP: 
-		gfLeftButtonState = FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(LEFT_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_RBUTTONDOWN:
-		gfRightButtonState = TRUE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(RIGHT_BUTTON_DOWN, 0, uiParam);
-		break;
-	case WM_RBUTTONUP:
-		gfRightButtonState = FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(RIGHT_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_MOUSEMOVE:
-		// Trigger an input event
-		if (gfTrackMousePos == TRUE)
-			QueueEvent(MOUSE_POS, 0, uiParam);
-		gfSGPInputReceived =	TRUE;
-		break;
-	default:
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-	}
-
-	//ddd why below code commented?
-//	if (gusMouseXPos < 0 || gusMouseXPos >= SCREEN_WIDTH ||
-//	gusMouseYPos < 0 || gusMouseYPos >= SCREEN_HEIGHT)
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-
-	return TRUE;
-}
-
 
 
 BOOLEAN InitializeInputManager(void)
@@ -261,9 +132,6 @@ BOOLEAN InitializeInputManager(void)
 	// Initialize the string input mechanism
 	gfCurrentStringInputState	= FALSE;
 	gpCurrentStringDescriptor	= NULL;
-	// Activate the hook functions for both keyboard and Mouse
-//	ghKeyboardHook = SetWindowsHookEx(WH_KEYBOARD, (HOOKPROC) KeyboardHandler, (HINSTANCE) 0, GetCurrentThreadId());
-//	DbgMessage(TOPIC_INPUT, DBG_LEVEL_2, String("Set keyboard hook returned %d", ghKeyboardHook));
 
 	InitializeCriticalSection(&gcsInputQueueLock);
 
@@ -281,8 +149,6 @@ void ShutdownInputManager(void)
 	UnRegisterDebugTopic(TOPIC_INPUT, "Input Manager");
 	// No Win32 keyboard/mouse hooks are installed under the SDL3 port, so
 	// there is nothing to unhook here (see InitializeInputManager).
-//	UnhookWindowsHookEx(ghKeyboardHook);
-//	UnhookWindowsHookEx(ghMouseHook);
 
 	DeleteCriticalSection(&gcsInputQueueLock);
 }
