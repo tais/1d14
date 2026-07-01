@@ -227,4 +227,71 @@ void StackTrace::OutputToStream(const char* msg, sgp::Logger::LogInstance* os) {
 	}
 }
 
+// Structured-exception crash handler. Called as the __except filter in
+// sgp.cpp. Writes the exception code + faulting address and a symbolized
+// backtrace (walked from the faulting context) to stack_trace.log.
+long RecordExceptionInfo(struct _EXCEPTION_POINTERS* pExceptInfo)
+{
+	sgp::Logger::LogInstance& os = SGP_LOG(s_log.id);
+
+	EXCEPTION_POINTERS* p = reinterpret_cast<EXCEPTION_POINTERS*>(pExceptInfo);
+	if (p == NULL || p->ExceptionRecord == NULL || p->ContextRecord == NULL)
+	{
+		os << L"*** CRASH (no exception information available) ***" << sgp::endl;
+		return EXCEPTION_EXECUTE_HANDLER;
+	}
+
+	EXCEPTION_RECORD* er = p->ExceptionRecord;
+	os << L"*** CRASH: exception code 0x" << reinterpret_cast<void*>(static_cast<DWORD_PTR>(er->ExceptionCode))
+	   << " at address " << er->ExceptionAddress << " ***" << sgp::endl;
+
+	// Make sure DbgHelp symbols are initialized (SymInitialize).
+	SymbolContext* context = SymbolContext::Get();
+
+	// StackWalk64 mutates the CONTEXT, so work on a copy.
+	CONTEXT ctx = *p->ContextRecord;
+	STACKFRAME64 frame;
+	memset(&frame, 0, sizeof(frame));
+
+	DWORD machine = IMAGE_FILE_MACHINE_UNKNOWN;
+#if defined(_M_IX86)
+	machine = IMAGE_FILE_MACHINE_I386;
+	frame.AddrPC.Offset    = ctx.Eip;
+	frame.AddrPC.Mode      = AddrModeFlat;
+	frame.AddrFrame.Offset = ctx.Ebp;
+	frame.AddrFrame.Mode   = AddrModeFlat;
+	frame.AddrStack.Offset = ctx.Esp;
+	frame.AddrStack.Mode   = AddrModeFlat;
+#elif defined(_M_X64)
+	machine = IMAGE_FILE_MACHINE_AMD64;
+	frame.AddrPC.Offset    = ctx.Rip;
+	frame.AddrPC.Mode      = AddrModeFlat;
+	frame.AddrFrame.Offset = ctx.Rbp;
+	frame.AddrFrame.Mode   = AddrModeFlat;
+	frame.AddrStack.Offset = ctx.Rsp;
+	frame.AddrStack.Mode   = AddrModeFlat;
+#endif
+
+	std::vector<void*> trace;
+	// The faulting instruction first, then the walked call stack.
+	trace.push_back(er->ExceptionAddress);
+	if (machine != IMAGE_FILE_MACHINE_UNKNOWN)
+	{
+		HANDLE hProcess = GetCurrentProcess();
+		HANDLE hThread  = GetCurrentThread();
+		for (int i = 0; i < 62; ++i)
+		{
+			if (!StackWalk64(machine, hProcess, hThread, &frame, &ctx,
+							 NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+				break;
+			if (frame.AddrPC.Offset == 0)
+				break;
+			trace.push_back(reinterpret_cast<void*>(frame.AddrPC.Offset));
+		}
+	}
+
+	context->OutputTraceToStream(trace, &os);
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
 #endif // _MSC_VER
