@@ -3,7 +3,10 @@ name: build
 on:
   push:
     branches:
-      - '**'
+      # Heavy multi-app / multi-language build + gamedir bundling.
+      # Only on master and release tags; feature branches use ci.yml
+      # (lean compile-only, no gamedir) for fast feedback.
+      - master
     tags:
       - 'v*'
   # allows to manually trigger a build
