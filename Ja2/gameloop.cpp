@@ -243,8 +243,13 @@ void GameLoop(void)
 		ResizeWorldItems();
 
 	//DebugMsg (TOPIC_JA2,DBG_LEVEL_3,"GameLoop: get mouse position");
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	// SDL3 port: the mouse position comes from SDL events, already mapped into
+	// the game's logical framebuffer space by SDL_ConvertEventToRenderCoordinates
+	// (sgp.cpp). Do NOT use GetCursorPos()+ScreenToClient() here: with
+	// SDL_SetRenderLogicalPresentation the window is letterboxed/scaled, so raw
+	// window coords no longer match the framebuffer. gusMouseX/YPos are correct.
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	// Hook into mouse stuff for MOVEMENT MESSAGES
 	//DebugMsg (TOPIC_JA2,DBG_LEVEL_3,"GameLoop: get mouse hook");

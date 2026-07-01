@@ -226,20 +226,31 @@ BOOLEAN InitializeVideoManager(HINSTANCE hInstance, UINT16 usCommandShow, void *
 	}
 
 	//
-	// Create the window at native 640x480. No SDL_SetRenderLogicalPresentation:
-	// the window stays 1:1 (the retained Win32 mouse path depends on it). The
-	// title matches APPLICATION_NAME so the single-instance FindWindowEx() check
-	// can still locate a running instance. iScreenMode: 0 == fullscreen
-	// (borderless desktop), 1 == windowed.
+	// Create the window. The title matches APPLICATION_NAME so the single-instance
+	// FindWindowEx() check can still locate a running instance. HIGH_PIXEL_DENSITY
+	// asks for a physical-pixel backbuffer on scaled/HiDPI displays; the logical
+	// presentation set below then maps the SCREEN_WIDTH x SCREEN_HEIGHT content to
+	// the window and maps mouse events back into that logical space (see the
+	// SDL_ConvertEventToRenderCoordinates call in sgp.cpp + gameloop.cpp using
+	// gusMouseX/YPos). iScreenMode: 0 == fullscreen (borderless), 1 == windowed.
 	//
 	{
-		SDL_WindowFlags winFlags = ( iScreenMode == 0 ) ? SDL_WINDOW_FULLSCREEN : 0;
+		SDL_WindowFlags winFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+		if ( iScreenMode == 0 ) winFlags |= SDL_WINDOW_FULLSCREEN;
 		gWindow = SDL_CreateWindow( APPLICATION_NAME, SCREEN_WIDTH, SCREEN_HEIGHT, winFlags );
 	}
 	if ( gWindow == NULL )
 	{
 		DebugMsg(TOPIC_VIDEO, DBG_LEVEL_0, String("SDL_CreateWindow failed: %s", SDL_GetError()));
 		return FALSE;
+	}
+	// Never let the window shrink below the game's fixed resolution.
+	SDL_SetWindowMinimumSize( gWindow, SCREEN_WIDTH, SCREEN_HEIGHT );
+	// In windowed mode, keep the game's aspect ratio on resize (letterbox stays even).
+	if ( iScreenMode != 0 )
+	{
+		const float fAspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;
+		SDL_SetWindowAspectRatio( gWindow, fAspect, fAspect );
 	}
 
 	gRenderer = SDL_CreateRenderer( gWindow, NULL );
@@ -249,6 +260,16 @@ BOOLEAN InitializeVideoManager(HINSTANCE hInstance, UINT16 usCommandShow, void *
 		return FALSE;
 	}
 	SDL_SetRenderVSync( gRenderer, gGameExternalOptions.gfVSync ? 1 : 0 );
+
+	// Establish the fixed SCREEN_WIDTH x SCREEN_HEIGHT logical coordinate space.
+	// LETTERBOX scales aspect-correctly to the window; NEAREST (below) keeps
+	// pixels crisp. Mouse events are mapped back into this space in sgp.cpp's
+	// event pump via SDL_ConvertEventToRenderCoordinates, so gusMouseX/YPos and
+	// the game's hit-testing agree regardless of window size / display scaling.
+	if ( !SDL_SetRenderLogicalPresentation( gRenderer, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_LETTERBOX ) )
+	{
+		DebugMsg(TOPIC_VIDEO, DBG_LEVEL_0, String("SDL_SetRenderLogicalPresentation failed: %s", SDL_GetError()));
+	}
 
 	gFrameTex = SDL_CreateTexture( gRenderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT );
 	if ( gFrameTex == NULL )
