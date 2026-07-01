@@ -2623,8 +2623,8 @@ BOOLEAN DrawCTHIndicator()
 	INT16 sStartScreenY;
 
 	POINT	MousePos;
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!	
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	sStartScreenX = (INT16)MousePos.x - 1;	// sevenfm: fix (-1) for cursor mismatch
 	sStartScreenY = (INT16)MousePos.y - 1;

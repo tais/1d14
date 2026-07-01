@@ -434,8 +434,8 @@ void GetPlayerKeyBoardInputForIMPBeginScreen( void )
 	POINT	MousePos;
 
 	// get the current curosr position, might just need it.
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	// handle input events
 	while (DequeueSpecificEvent(&InputEvent, KEY_DOWN|KEY_UP|KEY_REPEAT))

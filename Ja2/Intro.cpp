@@ -444,8 +444,8 @@ void GetIntroScreenUserInput()
 	InputAtom Event;
 	POINT	MousePos;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	while( DequeueEvent( &Event ) )
 	{

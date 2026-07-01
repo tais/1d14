@@ -662,8 +662,8 @@ void HandleDefaultEvent(InputAtom *Event)
 	if (Event != NULL && Event->usEvent & MouseButtonEvents)
 	{
 		POINT		MousePos;
-		GetCursorPos(&MousePos);
-		ScreenToClient(ghWindow, &MousePos); // In window coords!
+		MousePos.x = gusMouseXPos;
+		MousePos.y = gusMouseYPos;
 		MouseSystemHook(Event->usEvent, (UINT16)MousePos.x ,(UINT16)MousePos.y ,_LeftButtonDown, _RightButtonDown);
 	}
 }
