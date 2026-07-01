@@ -540,6 +540,14 @@ int main(int argc, char** argv)
 	{
 		return 1;
 	}
+	// SDL_Quit MUST run after ShutdownVideoManager (which destroys the SDL
+	// window/renderer/texture). ShutdownVideoManager runs via atexit(SafeSGPExit)
+	// registered later (in InitializeStandardGamingPlatform), so registering
+	// SDL_Quit here -- earlier -- makes atexit's LIFO order run SafeSGPExit ->
+	// ShutdownVideoManager first and SDL_Quit last. Calling SDL_Quit inline before
+	// the atexit teardown instead double-destroyed the freed SDL objects on every
+	// clean exit (the X button / quit), which is UB and could trip the crash box.
+	atexit(SDL_Quit);
 
 	// Keep the Win32 SEH wrapper (Windows-only, MSVC): run the real body
 	// under __try/__except so RecordExceptionInfo() logs any structured
@@ -562,7 +570,8 @@ int main(int argc, char** argv)
 	Result = HandledMain(argc, argv);
 #endif
 
-	SDL_Quit();
+	// SDL_Quit() is now registered via atexit() (see above) so it runs AFTER
+	// ShutdownVideoManager, not before it.
 	return Result;
 }
 
@@ -595,7 +604,10 @@ static int HandledMain(int argc, char** argv)
 
 	// Make sure that only one instance of this application is running at once
 	// // Look for prev instance by searching for the window
-	hPrevInstanceWindow = FindWindowEx( NULL, NULL, APPLICATION_NAME, APPLICATION_NAME );
+	// Match by TITLE only (pass NULL class): SDL registers its own Win32 window
+	// class, not APPLICATION_NAME, so matching on class would never find a prior
+	// instance. Our SDL window's title is APPLICATION_NAME (set in video.cpp).
+	hPrevInstanceWindow = FindWindowEx( NULL, NULL, NULL, APPLICATION_NAME );
 
 	// One is found, bring it up!
 	if ( hPrevInstanceWindow != NULL )
