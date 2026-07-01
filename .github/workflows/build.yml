@@ -4,11 +4,12 @@ on:
   push:
     branches:
       # Heavy multi-app / multi-language build + gamedir bundling.
-      # Only on master and release tags; feature branches use ci.yml
-      # (lean compile-only, no gamedir) for fast feedback.
+      # Only on master; feature branches use ci.yml (lean compile-only,
+      # no gamedir) for fast feedback. Tags do NOT auto-trigger this:
+      # release tags (v*) are engine-only, cut from the ci.yml artifact,
+      # so a tag push must not kick off the ~6GB gamedir bundling. Use the
+      # manual workflow_dispatch below when a full gamedir release is wanted.
       - master
-    tags:
-      - 'v*'
   # allows to manually trigger a build
   workflow_dispatch:
     inputs:
