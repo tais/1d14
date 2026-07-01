@@ -818,8 +818,8 @@ void KeyChange(UINT32 usParam, UINT32 uiParam, UINT8 ufKeyState)
 		}
 	}
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 
@@ -985,8 +985,8 @@ void GetMousePos(SGPPoint *Point)
 {
 	POINT MousePos;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	Point->iX = (UINT32) MousePos.x;
 	Point->iY = (UINT32) MousePos.y;
@@ -1529,8 +1529,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(LEFT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiLeftButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;
@@ -1550,8 +1550,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(RIGHT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiRightButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;

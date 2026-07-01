@@ -1287,8 +1287,8 @@ void ChatScreenMessageScrollBarCallBack( MOUSE_REGION *pRegion, INT32 iReason )
 		if ( ubNumMessages > MAX_CHATLOG_MESSAGES )
 		{
 			// where is the mouse?
-			GetCursorPos( &MousePos );
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 
 			ubMouseYOffset = (UINT8) MousePos.y - CHATLOG_SCROLL_AREA_START_Y;
 
