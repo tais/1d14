@@ -51,9 +51,14 @@ jobs:
       - name: Build
         run: cmake --build build/ -- -v
 
+      - name: Stage runtime DLL
+        if: always()
+        shell: bash
+        run: cp -v ext/SDL3/lib/x86/SDL3.dll build/ 2>/dev/null || true
+
       - name: List artifacts
         shell: bash
-        run: find build/ -name '*.exe' -o -name '*.pdb' | sort
+        run: find build/ -name '*.exe' -o -name '*.pdb' -o -name '*.dll' | sort
 
       - name: Upload exe
         if: always()
@@ -63,4 +68,5 @@ jobs:
           path: |
             build/*.exe
             build/*.pdb
+            build/SDL3.dll
           if-no-files-found: ignore
