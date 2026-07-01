@@ -101,7 +101,7 @@ public:
 	popupDefContentGenerator() : generatorId(0){};
 	popupDefContentGenerator( UINT16 generatorId ) : generatorId( generatorId ){};
 
-	~popupDefContentGenerator();
+	~popupDefContentGenerator(){};
 
 	BOOL addToBox(POPUP * popup);
 
