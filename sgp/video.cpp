@@ -127,7 +127,6 @@ char				gFatalErrorString[ 512 ];
 // 8-bit palette stuff
 
 SGPPaletteEntry								gSgpPalette[256];
-LPDIRECTDRAWPALETTE						gpDirectDrawPalette;
 
 //
 // Make sure we record the value of the hWindow (main window frame for the application)
@@ -644,7 +643,7 @@ void SetFrameBufferRefreshOverride(PTR pFrameBufferRefreshOverride)
 //#define SCROLL_TEST
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void ScrollJA2Background(UINT32 uiDirection, INT16 sScrollXIncrement, INT16 sScrollYIncrement, LPDIRECTDRAWSURFACE2 pSource, LPDIRECTDRAWSURFACE2 pDest, BOOLEAN fRenderStrip, UINT32 uiCurrentMouseBackbuffer )
+void ScrollJA2Background(UINT32 uiDirection, INT16 sScrollXIncrement, INT16 sScrollYIncrement, PTR pSource, PTR pDest, BOOLEAN fRenderStrip, UINT32 uiCurrentMouseBackbuffer )
 {
 	//
 	// SDL port - ScrollJA2Background option (B): the DirectDraw incremental
@@ -973,46 +972,6 @@ void RefreshScreen(void *DummyVariable)
 	gfScrollStart = FALSE;
 
 	(void)DummyVariable;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// Direct X object access functions
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-LPDIRECTDRAW2 GetDirectDraw2Object(void)
-{
-	// DirectDraw is gone; the vsurface seam no longer wraps these handles.
-	return NULL;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-LPDIRECTDRAWSURFACE2 GetPrimarySurfaceObject(void)
-{
-	return NULL;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-LPDIRECTDRAWSURFACE2 GetBackBufferObject(void)
-{
-	return NULL;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-LPDIRECTDRAWSURFACE2 GetFrameBufferObject(void)
-{
-	return NULL;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-LPDIRECTDRAWSURFACE2 GetMouseBufferObject(void)
-{
-	return NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

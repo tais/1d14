@@ -16,8 +16,6 @@
 #include "DEBUG.H"
 #include "vsurface.h"
 #include "vsurface_private.h"
-#include "DirectX Common.h"
-#include <ddraw.h>
 #include "winfont.h"
 #include "Font.h"
 #include "Font Control.h"
@@ -440,8 +438,7 @@ void PrintWinFont( UINT32 uiDestBuf, INT32 iFont, INT32 x, INT32 y, STR16 pFontS
 	GetVideoSurface( &hVSurface, uiDestBuf );
 
 	// TODO: minimal SDL3 port — WinFont GDI text disabled; English uses bitmap fonts. Reinstate via a 16bpp DIBSection over GetVideoSurfaceBuffer() later.
-	// With plain heap framebuffers there is no DirectDraw HDC: GetVideoSurfaceDDSurface() now returns
-	// a raw buffer pointer and calling IDirectDrawSurface2_GetDC() on it would crash. The GDI
+	// With plain heap framebuffers there is no GDI device context to draw onto, so the GDI
 	// GetDC / TextOutW / ReleaseDC draw path is therefore stubbed out, making PrintWinFont a safe no-op.
 
 }

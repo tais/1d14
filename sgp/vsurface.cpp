@@ -1,4 +1,3 @@
-#include "DirectDraw Calls.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "DEBUG.H"
@@ -1773,32 +1772,6 @@ BOOLEAN UpdateBackupSurface( HVSURFACE hVSurface )
 // Private DirectDraw manipulation functions
 //
 // *****************************************************************************
-
-// These accessors formerly returned DirectDraw interfaces. In the plain-buffer
-// model they just hand back the raw pixel buffer pointer (harmless raw pointer,
-// used by WinFont/Cinematics which are being reworked separately). Do NOT delete
-// them or those translation units fail to compile.
-LPDIRECTDRAWSURFACE2 GetVideoSurfaceDDSurface( HVSURFACE hVSurface )
-{
-	Assert( hVSurface != NULL );
-
-	return( (LPDIRECTDRAWSURFACE2) hVSurface->pSurfaceData );
-}
-
-LPDIRECTDRAWSURFACE GetVideoSurfaceDDSurfaceOne( HVSURFACE hVSurface )
-{
-	Assert( hVSurface != NULL );
-
-	return( (LPDIRECTDRAWSURFACE) hVSurface->pSurfaceData );
-}
-
-
-LPDIRECTDRAWPALETTE  GetVideoSurfaceDDPalette( HVSURFACE hVSurface )
-{
-	Assert( hVSurface != NULL );
-
-	return( (LPDIRECTDRAWPALETTE) hVSurface->pSurfaceData );
-}
 
 // Returns the raw 16bpp pixel buffer for a surface (used by WinFont to build a
 // DIBSection over the RGB565 buffer).

@@ -11,16 +11,10 @@
 #include "DEBUG.H"
 #include "FileMan.h"
 #include "SMACK.H"
-#include "ddraw.h"
-#include "Mss.h"
-#include "DirectX Common.h"
-#include "DirectDraw Calls.h"
 #include "soundman.h"
 #include "video.h"
 
 #include "Cinematics Bink.h"
-
-#include "vsurface_private.h"
 
 //#include "Intro.h"
 #include <vfs/Core/vfs.h>
@@ -53,8 +47,6 @@
 BINKFLIC BinkList[BINK_NUM_FLICS];
 UINT32	 guiBinkPixelFormat=0;
 
-//LPDIRECTDRAWSURFACE lpBinkVideoPlayback=NULL;
-LPDIRECTDRAWSURFACE2 lpBinkVideoPlayback2=NULL;
 HWND				hBinkDisplayWindow=0;
 UINT32			guiWidth;
 UINT32			guiHeight;

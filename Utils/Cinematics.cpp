@@ -24,17 +24,12 @@
 #include "DEBUG.H"
 #include "FileMan.h"
 #include "SMACK.H"
-#include "ddraw.h"
-#include "DirectX Common.h"
-#include "DirectDraw Calls.h"
 #include "Cinematics.h"
 #include "soundman.h"
 #include <vfs/Core/vfs.h>
 #include <vfs/Core/vfs_file_raii.h>
 
 	#include "video.h"
-
-#include "vsurface_private.h"
 
 
 
@@ -62,9 +57,6 @@ UINT32		uiDisplayHeight, uiDisplayWidth;
 BOOLEAN		fSuspendFlics = FALSE;
 UINT32		uiFlicsPlaying = 0;
 UINT32		guiSmackPixelFormat = SMACKBUFFER565;
-
-LPDIRECTDRAWSURFACE lpVideoPlayback=NULL;
-LPDIRECTDRAWSURFACE2 lpVideoPlayback2=NULL;
 
 
 //-Function-Prototypes-------------------------------------------------------------
@@ -250,7 +242,6 @@ SMKFLIC *SmkOpenFlic(const CHAR8 *cFilename)
 	SmkSetupVideo();
 
 	pSmack->cFilename=cFilename;
-	pSmack->lpDDS=lpVideoPlayback2;
 	pSmack->hWindow=hDisplayWindow;
 
 	// Smack flic is now open and ready to go
