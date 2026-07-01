@@ -171,6 +171,15 @@ extern "C" BOOLEAN SgpHandleSDLEvent(const SDL_Event *event)
 		case SDL_EVENT_WINDOW_FOCUS_LOST:
 		case SDL_EVENT_WINDOW_MINIMIZED:
 			gfApplicationActive = FALSE;
+			// Clear held input: a key/button RELEASE that happens while we are
+			// unfocused (Alt-Tab, click onto another window) is delivered to the
+			// other window, not us, so without this those globals stay TRUE and we
+			// resume with a stuck button (spurious band-select / fire) or a stuck
+			// Shift/Ctrl/Alt. Clearing gfKeyState also drops any stuck movement key.
+			SDL_memset( gfKeyState, FALSE, sizeof(gfKeyState) );
+			gfShiftState = gfCtrlState = gfAltState = 0;
+			gfLeftButtonState = gfRightButtonState = gfMiddleButtonState = FALSE;
+			gfX1ButtonState = gfX2ButtonState = FALSE;
 			break;
 
 		// ---- Keyboard (Design 1: reuse the original translator) --------------

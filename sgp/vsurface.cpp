@@ -157,7 +157,7 @@ namespace SurfaceData
 		std::map<tID,tSurface>::iterator sit = SurfaceData::_surfaceID.begin();
 		for(;sit != SurfaceData::_surfaceID.end(); ++sit)
 		{
-			if(sit->second = surface)
+			if(sit->second == surface)
 			{
 				SurfaceData::_surfaceData[sit->second] = data;
 				SurfaceData::_surfaceOfData[data] = sit->first;
@@ -1962,9 +1962,29 @@ BOOLEAN BltVSurfaceUsingDD( HVSURFACE hDestVSurface, HVSURFACE hSrcVSurface, UIN
 	UINT32	 uiSrcPitch, uiDestPitch;
 	UINT32	 uiWidth, uiHeight;
 
-	// Width/height come from the (already clipped) source rectangle.
-	uiWidth  = SrcRect->right  - SrcRect->left;
-	uiHeight = SrcRect->bottom - SrcRect->top;
+	// This entry point is called DIRECTLY by game code (ShopKeeper's
+	// RestoreTacticalBackGround, HelpScreen's RenderTextBufferToScreen), which
+	// bypasses BltVideoSurface's dest pre-clip, and the asm blitters below do NOT
+	// bound to the destination surface. Clip a COPY of the source rect against
+	// BOTH surfaces' own bounds so a dest near the edge, or a SrcRect larger than
+	// the source, can't over-write / over-read the heap buffers. Adjust the src
+	// rect to stay aligned with the (clamped) dest origin.
+	RECT sr = *SrcRect;
+	if ( iDestX < 0 ) { sr.left -= iDestX; iDestX = 0; }
+	if ( iDestY < 0 ) { sr.top  -= iDestY; iDestY = 0; }
+	if ( sr.left < 0 ) sr.left = 0;
+	if ( sr.top  < 0 ) sr.top  = 0;
+	if ( sr.right  > (LONG)hSrcVSurface->usWidth  ) sr.right  = hSrcVSurface->usWidth;
+	if ( sr.bottom > (LONG)hSrcVSurface->usHeight ) sr.bottom = hSrcVSurface->usHeight;
+	if ( iDestX + ( sr.right  - sr.left ) > (INT32)hDestVSurface->usWidth  )
+		sr.right  = sr.left + ( (LONG)hDestVSurface->usWidth  - iDestX );
+	if ( iDestY + ( sr.bottom - sr.top ) > (INT32)hDestVSurface->usHeight )
+		sr.bottom = sr.top + ( (LONG)hDestVSurface->usHeight - iDestY );
+	if ( sr.right <= sr.left || sr.bottom <= sr.top )
+		return( TRUE );
+
+	uiWidth  = sr.right  - sr.left;
+	uiHeight = sr.bottom - sr.top;
 
 	// Lock both surfaces (pitch is in BYTES = width * 2).
 	if ( ( pSrcSurface16 = (UINT16 *)LockVideoSurfaceBuffer( hSrcVSurface, &uiSrcPitch ) ) == NULL )
@@ -1980,15 +2000,15 @@ BOOLEAN BltVSurfaceUsingDD( HVSURFACE hDestVSurface, HVSURFACE hSrcVSurface, UIN
 		return( FALSE );
 	}
 
-	// Route all real pixel work through the existing asm blitters. These clip
-	// against the per-surface registered rectangle themselves.
+	// Route all real pixel work through the existing asm blitters. The source
+	// rect (sr) and dest origin were clipped to both surfaces' bounds above.
 	if ( fBltFlags & VS_BLT_USECOLORKEY )
 	{
-		Blt16BPPTo16BPPTrans( pDestSurface16, uiDestPitch, pSrcSurface16, uiSrcPitch, iDestX, iDestY, SrcRect->left, SrcRect->top, uiWidth, uiHeight, Get16BPPColor( hSrcVSurface->TransparentColor ) );
+		Blt16BPPTo16BPPTrans( pDestSurface16, uiDestPitch, pSrcSurface16, uiSrcPitch, iDestX, iDestY, sr.left, sr.top, uiWidth, uiHeight, Get16BPPColor( hSrcVSurface->TransparentColor ) );
 	}
 	else
 	{
-		Blt16BPPTo16BPP( pDestSurface16, uiDestPitch, pSrcSurface16, uiSrcPitch, iDestX, iDestY, SrcRect->left, SrcRect->top, uiWidth, uiHeight );
+		Blt16BPPTo16BPP( pDestSurface16, uiDestPitch, pSrcSurface16, uiSrcPitch, iDestX, iDestY, sr.left, sr.top, uiWidth, uiHeight );
 	}
 
 	UnLockVideoSurfaceBuffer( hSrcVSurface );
@@ -2158,6 +2178,11 @@ BOOLEAN BltVSurfaceUsingDDBlt( HVSURFACE hDestVSurface, HVSURFACE hSrcVSurface, 
 		if ( iDstY < 0 || iDstY >= hDestVSurface->usHeight )
 			continue;
 
+		// Clamp the source row to the source surface (a SrcRect larger than the
+		// source, or rounding at the far edge, would otherwise read past pSrc).
+		if ( iSrcY < 0 ) iSrcY = 0;
+		else if ( iSrcY >= hSrcVSurface->usHeight ) iSrcY = hSrcVSurface->usHeight - 1;
+
 		pSrcRow  = pSrc  + iSrcY * uiSrcPitchPix;
 		pDestRow = pDest + iDstY * uiDestPitchPix;
 
@@ -2169,6 +2194,8 @@ BOOLEAN BltVSurfaceUsingDDBlt( HVSURFACE hDestVSurface, HVSURFACE hSrcVSurface, 
 
 			if ( iDstX < 0 || iDstX >= hDestVSurface->usWidth )
 				continue;
+			if ( iSrcX < 0 ) iSrcX = 0;
+			else if ( iSrcX >= hSrcVSurface->usWidth ) iSrcX = hSrcVSurface->usWidth - 1;
 
 			usPixel = pSrcRow[ iSrcX ];
 			if ( fUseColorKey && usPixel == usColorKey )

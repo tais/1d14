@@ -890,6 +890,13 @@ void RefreshScreen(void *DummyVariable)
 		INT32 w  = (INT32)gusMouseCursorWidth  - srcX0;
 		INT32 h  = (INT32)gusMouseCursorHeight - srcY0;
 
+		// The cursor sprite/save buffers are MAX_CURSOR_WIDTH x MAX_CURSOR_HEIGHT
+		// with a fixed MAX_CURSOR_WIDTH stride; a cursor whose declared size
+		// (art + hotspot offset) exceeds that would overflow the save buffer and
+		// read gpHeapMouse past its 64-wide stride. Clamp defensively.
+		if ( w > MAX_CURSOR_WIDTH )  w = MAX_CURSOR_WIDTH;
+		if ( h > MAX_CURSOR_HEIGHT ) h = MAX_CURSOR_HEIGHT;
+
 		if ( dX + w > (INT32)usScreenWidth )  w = (INT32)usScreenWidth  - dX;
 		if ( dY + h > (INT32)usScreenHeight ) h = (INT32)usScreenHeight - dY;
 

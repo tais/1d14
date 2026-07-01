@@ -806,7 +806,13 @@ UINT32	MainGameScreenHandle(void)
 	// Handle Scroll Of World
 	ScrollWorld( );
 
-	//SetRenderFlags( RENDER_FLAG_FULL );
+	// SDL3 port: force a full world re-render WHILE scrolling. The old DirectDraw
+	// path shifted the back buffer in place each scroll frame; our present just
+	// re-uploads gpHeapFrame, so without a full render the static world freezes
+	// (mercs warp with a trail, the map only updates when scrolling stops) until
+	// RENDER_FLAG_FULL is set on scroll-stop. Setting it during scroll fixes it.
+	if ( gfScrollPending || gfScrollInertia )
+		SetRenderFlags( RENDER_FLAG_FULL );
 
 	RenderWorld( );
 
