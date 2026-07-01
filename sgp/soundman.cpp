@@ -6,7 +6,7 @@
 *		Originally an FMOD 3.75 (FSOUND_*) / DirectSound backend by Derek Beland
 *	(May 28, 1997). The FMOD backend has been replaced by SDL3_mixer (the MIX_*
 *	API) for the Windows-only MSVC x86 SDL3 port. The public soundman.h surface
-*	(SoundPlay/SoundPlayStreamedFile/SoundPlayRandom/SoundService*/... and the
+*	(SoundPlay/SoundPlayStreamedFile/SoundPlayRandom/SoundServiceStreams and the
 *	SOUNDPARMS / RANDOMPARMS structs) is preserved byte-identically so the rest of
 *	the game (Sound Control.cpp / Music Control.cpp / GAP.cpp / Ambient Control.cpp
 *	...) is unchanged.
