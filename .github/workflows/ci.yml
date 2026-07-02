@@ -1,0 +1,75 @@
+name: ci
+
+# Lean compile+link check for the SDL3 port.
+# Builds ONLY the main JA2 English executable, 32-bit x86 MSVC + Ninja,
+# and does NOT bundle the game data. This is the fast feedback loop for
+# the DirectDraw -> SDL3 minimal port work.
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      application:
+        description: 'JA2 | JA2UB | JA2MAPEDITOR | JA2UBMAPEDITOR'
+        required: false
+        default: 'JA2'
+        type: string
+      build_type:
+        description: 'RelWithDebInfo | Debug | Release'
+        required: false
+        default: 'RelWithDebInfo'
+        type: string
+
+jobs:
+  compile:
+    name: compile (x86 MSVC)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 32-bit x86 MSVC environment (cl.exe / link.exe / libs on PATH).
+      # The port keeps the original inline-asm blitters, which require x86.
+      - name: Set up MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -eux
+          APP='${{ github.event.inputs.application || 'JA2' }}'
+          BT='${{ github.event.inputs.build_type || 'RelWithDebInfo' }}'
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE="$BT" \
+            -DLanguages=ENGLISH \
+            -DApplications="$APP"
+
+      - name: Build
+        run: cmake --build build/ -- -v
+
+      - name: Stage runtime DLLs
+        if: always()
+        shell: bash
+        run: |
+          cp -v ext/SDL3/lib/x86/SDL3.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/SDL3_mixer.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/optional/*.dll build/ 2>/dev/null || true
+
+      - name: List artifacts
+        shell: bash
+        run: find build/ -name '*.exe' -o -name '*.pdb' -o -name '*.dll' | sort
+
+      - name: Upload exe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JA2_ENGLISH
+          path: |
+            build/*.exe
+            build/*.pdb
+            build/*.dll
+          if-no-files-found: ignore

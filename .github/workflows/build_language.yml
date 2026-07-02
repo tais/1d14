@@ -81,6 +81,15 @@ jobs:
       - name: Build
         run: |
           cmake --build build/ -- -v
+      - name: Stage runtime DLLs
+        shell: bash
+        run: |
+          # SDL3 port: the engine needs SDL3.dll + SDL3_mixer.dll (+ optional
+          # codec DLLs) shipped next to the exe. Carry them in the artifact so
+          # the assemble job can drop them into the gamedir bundle.
+          cp -v ext/SDL3/lib/x86/SDL3.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/SDL3_mixer.dll build/ 2>/dev/null || true
+          cp -v ext/SDL3_mixer/lib/x86/optional/*.dll build/ 2>/dev/null || true
       - name: List build artifacts
         shell: bash
         run: |
@@ -90,7 +99,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.language }}_${{ matrix.application }}
-          path: build/*.exe
+          path: |
+            build/*.exe
+            build/*.dll
 
   assemble:
     needs: [ compile ]
@@ -162,6 +173,9 @@ jobs:
           do
             mv artifacts/${APP}/*.exe gamedir/${APP}.exe
           done
+          # SDL3 port: drop the SDL3 runtime DLLs (identical across every app
+          # artifact) next to the exes so the packaged game actually starts.
+          cp -v artifacts/ja2/*.dll gamedir/ 2>/dev/null || true
 
       - name: Create version information file
         shell: bash
