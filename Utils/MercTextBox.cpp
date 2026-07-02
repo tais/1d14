@@ -237,7 +237,7 @@ BOOLEAN RenderMercPopupBox(INT16 sDestX, INT16 sDestY, UINT32 uiBuffer )
 		BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST | VS_BLT_USECOLORKEY, NULL );
 	else
 		BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST, NULL );
-	
+
 	// blt, and grab return value
 //	fReturnValue = Blt16BPPTo16BPP(pDestBuf, uiDestPitchBYTES, pSrcBuf, uiSrcPitchBYTES, sDestX, sDestY, 0, 0, gPopUpTextBox->sWidth, gPopUpTextBox->sHeight);
 
