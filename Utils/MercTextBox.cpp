@@ -6,8 +6,6 @@
 	#include "WordWrap.h"
 	#include "vobject_blitters.h"
 	#include "message.h"
-	#include <stdio.h>
-	#include <stdlib.h>
 
 
 #define		TEXT_POPUP_WINDOW_TEXT_OFFSET_X		8
@@ -234,48 +232,11 @@ BOOLEAN RenderMercPopupBox(INT16 sDestX, INT16 sDestY, UINT32 uiBuffer )
 	// now lock it
 //	pSrcBuf = ( UINT16* )LockVideoSurface( gPopUpTextBox->uiSourceBufferIndex, &uiSrcPitchBYTES);
 	
-	// Opt-in diagnostic (set JA2_BOX_DEBUG): sample the FRAME_BUFFER dest centre
-	// BEFORE the panel blit, then after, plus the box-surface centre. Tells us
-	// definitively: did the blit change the frame buffer (dstBefore != dstAfter)
-	// and did it land the panel (dstAfter == srcPx). Zero cost unless set.
-	BOOLEAN fBoxDbg = ( uiBuffer == FRAME_BUFFER && getenv("JA2_BOX_DEBUG") != NULL );
-	UINT16 dstBefore = 0;
-	INT32  cx = gPopUpTextBox->sWidth / 2, cy = gPopUpTextBox->sHeight / 2;
-	if ( fBoxDbg )
-	{
-		UINT32 dp = 0;
-		UINT16 *db = (UINT16 *)LockVideoSurface( FRAME_BUFFER, &dp );
-		dstBefore = db ? db[ ( sDestY + cy ) * ( dp >> 1 ) + ( sDestX + cx ) ] : 0xDEAD;
-		UnLockVideoSurface( FRAME_BUFFER );
-	}
-
 	//check to see if we are wanting to blit a transparent background
-	BOOLEAN fBltOK;
 	if ( gPopUpTextBox->uiFlags & MERC_POPUP_PREPARE_FLAGS_TRANS_BACK )
-		fBltOK = BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST | VS_BLT_USECOLORKEY, NULL );
+		BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST | VS_BLT_USECOLORKEY, NULL );
 	else
-		fBltOK = BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST, NULL );
-
-	if ( fBoxDbg )
-	{
-		UINT32 sp = 0, dp = 0;
-		UINT16 *sb = (UINT16 *)LockVideoSurface( gPopUpTextBox->uiSourceBufferIndex, &sp );
-		UINT16 *db = (UINT16 *)LockVideoSurface( FRAME_BUFFER, &dp );
-		UINT16 srcPx = sb ? sb[ cy * ( sp >> 1 ) + cx ] : 0xDEAD;
-		UINT16 dstAfter = db ? db[ ( sDestY + cy ) * ( dp >> 1 ) + ( sDestX + cx ) ] : 0xDEAD;
-		UnLockVideoSurface( gPopUpTextBox->uiSourceBufferIndex );
-		UnLockVideoSurface( FRAME_BUFFER );
-		FILE *f = fopen( "box_debug.log", "a" );
-		if ( f )
-		{
-			fprintf( f, "bltOK=%d flags=%x idx=%u wh=%dx%d dst=%d,%d srcPx=%04x before=%04x after=%04x %s %s\n",
-				(int)fBltOK, gPopUpTextBox->uiFlags, gPopUpTextBox->uiSourceBufferIndex,
-				gPopUpTextBox->sWidth, gPopUpTextBox->sHeight, sDestX, sDestY, srcPx, dstBefore, dstAfter,
-				( dstAfter != dstBefore ) ? "CHANGED" : "unchanged(blit-noop)",
-				( dstAfter == srcPx ) ? "==panel" : "!=panel" );
-			fclose( f );
-		}
-	}
+		BltVideoSurface( uiBuffer, gPopUpTextBox->uiSourceBufferIndex, 0, sDestX, sDestY, VS_BLT_FAST, NULL );
 
 	// blt, and grab return value
 //	fReturnValue = Blt16BPPTo16BPP(pDestBuf, uiDestPitchBYTES, pSrcBuf, uiSrcPitchBYTES, sDestX, sDestY, 0, 0, gPopUpTextBox->sWidth, gPopUpTextBox->sHeight);
