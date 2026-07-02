@@ -1,4 +1,3 @@
-	#include "DirectDraw Calls.h"
 	#include <stdio.h>
 	#include "DEBUG.H"
 		#include "video.h"													// JA2
@@ -1973,7 +1972,15 @@ UINT32 uiLineSkipDest, uiLineSkipSrc;
 	{
 		UINT32 surfID = SurfaceData::GetSurfaceID((BYTE*)pDest);
 		ClipRectangle::ClipType ct;
-		if( (ct=g_SurfaceRectangle[surfID].Clip(iDestXPos, iDestYPos,uiWidth, uiHeight)) != ClipRectangle::NoClip )
+		// surfID==0 means the dest pointer isn't registered in SurfaceData -- e.g.
+		// FRAME_BUFFER locked through LockVideoSurfaceBuffer (the surface->surface
+		// blit path in BltVSurfaceUsingDD), which does NOT register the pointer the
+		// way the index-based LockVideoSurface does. Without this guard the clip runs
+		// against g_SurfaceRectangle[0] (an empty 0x0 rect) and FullClip-drops the
+		// whole blit -- which is why opaque MercPopUpBox message-box panels vanished
+		// while their buttons (8bpp VObject path) still drew. The src check below is
+		// already guarded this way; the caller has already clipped the rect to bounds.
+		if( surfID && (ct=g_SurfaceRectangle[surfID].Clip(iDestXPos, iDestYPos,uiWidth, uiHeight)) != ClipRectangle::NoClip )
 		{
 #if _DEBUG
 			WriteMessageToFile(L"Trying to render to outside of destination surface");
@@ -11458,149 +11465,6 @@ BOOLEAN ClipReleatedSrcAndDestRectangles( HVOBJECT hDestVObject, HVOBJECT hSrcVO
 	}
 
 	return( TRUE );
-}
-
-
-BOOLEAN FillSurface( HVOBJECT hDestVObject, blt_fx *pBltFx )
-{
-	DDBLTFX				BlitterFX;
-
-	Assert( hDestVObject != NULL );
-	CHECKF( pBltFx != NULL );
-
-	BlitterFX.dwSize = sizeof( DDBLTFX );
-	BlitterFX.dwFillColor = pBltFx->ColorFill;
-
-	DDBltSurface( (LPDIRECTDRAWSURFACE2)hDestVObject->pSurfaceData, NULL, NULL, NULL, DDBLT_COLORFILL, &BlitterFX );
-
-	if ( hDestVObject->fFlags & VOBJECT_VIDEO_MEM_USAGE && !hDestVObject->fFlags & VOBJECT_RESERVED_SURFACE )
-	{
-		UpdateBackupSurface( hDestVObject );
-	}
-
-	return( TRUE );
-}
-
-BOOLEAN FillSurfaceRect( HVOBJECT hDestVObject, blt_fx *pBltFx )
-{
-	DDBLTFX				BlitterFX;
-
-	Assert( hDestVObject != NULL );
-	CHECKF( pBltFx != NULL );
-
-	BlitterFX.dwSize = sizeof( DDBLTFX );
-	BlitterFX.dwFillColor = pBltFx->ColorFill;
-
-	DDBltSurface( (LPDIRECTDRAWSURFACE2)hDestVObject->pSurfaceData, (LPRECT)&(pBltFx->FillRect), NULL, NULL, DDBLT_COLORFILL, &BlitterFX );
-
-	if ( hDestVObject->fFlags & VOBJECT_VIDEO_MEM_USAGE && !hDestVObject->fFlags & VOBJECT_RESERVED_SURFACE )
-	{
-		UpdateBackupSurface( hDestVObject );
-	}
-
-	return( TRUE );
-}
-
-
-BOOLEAN BltVObjectUsingDD( HVOBJECT hDestVObject, HVOBJECT hSrcVObject, UINT32 fBltFlags, INT32 iDestX, INT32 iDestY, RECT *SrcRect )
-{
-	UINT32		uiDDFlags;
-	RECT			DestRect;
-
-	// Blit using the correct blitter
-	if ( fBltFlags & VO_BLT_FAST )
-	{
-
-		// Validations
-		CHECKF( iDestX >= 0 );
-		CHECKF( iDestY >= 0 );
-
-		// Default flags
-		uiDDFlags = 0;
-
-		// Convert flags into DD flags, ( for transparency use, etc )
-		if ( fBltFlags & VO_BLT_USECOLORKEY )
-		{
-			uiDDFlags != DDBLTFAST_SRCCOLORKEY;
-		}
-
-		// Convert flags into DD flags, ( for transparency use, etc )
-		if ( fBltFlags & VO_BLT_USEDESTCOLORKEY )
-		{
-			uiDDFlags != DDBLTFAST_DESTCOLORKEY;
-		}
-
-		if ( uiDDFlags == 0 )
-		{
-			// Default here is no colorkey
-			uiDDFlags = DDBLTFAST_NOCOLORKEY;
-		}
-
-		DDBltFastSurface( (LPDIRECTDRAWSURFACE2)hDestVObject->pSurfaceData, iDestX, iDestY, (LPDIRECTDRAWSURFACE2)hSrcVObject->pSurfaceData, SrcRect, uiDDFlags );
-
-	}
-	else
-	{
-		// Normal, specialized blit for clipping, etc
-
-		// Default flags
-		uiDDFlags = DDBLT_WAIT;
-
-		// Convert flags into DD flags, ( for transparency use, etc )
-		if ( fBltFlags & VO_BLT_USECOLORKEY )
-		{
-			uiDDFlags |= DDBLT_KEYSRC;
-		}
-
-		// Setup dest rectangle
-		DestRect.top =	(int)iDestY;
-		DestRect.left = (int)iDestX;
-		DestRect.bottom = (int)iDestY + ( SrcRect->iBottom - SrcRect->iTop );
-		DestRect.right = (int)iDestX + ( SrcRect->iRight - SrcRect->iLeft );
-
-		// Do Clipping of rectangles
-		if ( !ClipReleatedSrcAndDestRectangles( hDestVObject, hSrcVObject, &DestRect, SrcRect ) )
-		{
-			// Returns false because dest start is > dest size
-			return( TRUE );
-		}
-
-		DDBltSurface( (LPDIRECTDRAWSURFACE2)hDestVObject->pSurfaceData, &DestRect, (LPDIRECTDRAWSURFACE2)hSrcVObject->pSurfaceData,
-							SrcRect, uiDDFlags, NULL );
-
-	}
-
-	// Update backup surface with new data
-	if ( hDestVObject->fFlags & VOBJECT_VIDEO_MEM_USAGE && !hDestVObject->fFlags & VOBJECT_RESERVED_SURFACE )
-	{
-		UpdateBackupSurface( hDestVObject );
-	}
-
-	return( TRUE );
-}
-
-
-// Blt to backup buffer
-BOOLEAN UpdateBackupSurface( HVOBJECT hVObject )
-{
-	RECT		aRect;
-
-	// Assertions
-	Assert( hVObject != NULL );
-
-	// Validations
-	CHECKF( hVObject->pSavedSurfaceData != NULL );
-
-	aRect.top = (int)0;
-	aRect.left = (int)0;
-	aRect.bottom = (int)hVObject->usHeight;
-	aRect.right = (int)hVObject->usWidth;
-
-	// Copy all contents into backup buffer
-	DDBltFastSurface( (LPDIRECTDRAWSURFACE2)hVObject->pSurfaceData, 0, 0, (LPDIRECTDRAWSURFACE2)hVObject->pSavedSurfaceData, &aRect, DDBLTFAST_NOCOLORKEY );
-
-	return( TRUE );
-
 }
 
 */

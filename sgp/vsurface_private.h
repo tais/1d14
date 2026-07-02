@@ -9,10 +9,7 @@
 //
 // ***********************************************************************
 
-LPDIRECTDRAWSURFACE2 GetVideoSurfaceDDSurface( HVSURFACE hVSurface );
-LPDIRECTDRAWSURFACE	GetVideoSurfaceDDSurfaceOne( HVSURFACE hVSurface );
-LPDIRECTDRAWPALETTE	GetVideoSurfaceDDPalette( HVSURFACE hVSurface );
-
-HVSURFACE CreateVideoSurfaceFromDDSurface( LPDIRECTDRAWSURFACE2 lpDDSurface );
+// Returns the raw 16bpp pixel buffer for a surface (WinFont builds a DIBSection over it).
+BYTE* GetVideoSurfaceBuffer( HVSURFACE hVSurface );
 
 #endif

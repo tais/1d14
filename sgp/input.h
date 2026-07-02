@@ -124,6 +124,14 @@ extern INT16 gsMouseWheelDeltaValue;//dnl ch4 210909
 extern BOOLEAN	gfLeftButtonState;	// TRUE = Pressed, FALSE = Not Pressed
 extern BOOLEAN	gfRightButtonState; // TRUE = Pressed, FALSE = Not Pressed
 extern BOOLEAN	gfMiddleButtonState;//dnl ch4 210909 TRUE = Pressed, FALSE = Not Pressed
+extern BOOLEAN	gfX1ButtonState;	// TRUE = Pressed, FALSE = Not Pressed
+extern BOOLEAN	gfX2ButtonState;	// TRUE = Pressed, FALSE = Not Pressed
+
+// Modifier state (defined in input.cpp). Maintained by KeyDown/KeyUp; exposed
+// here so the SDL input seam (and other callers) can read/refresh them.
+extern UINT16	gfShiftState;		// SHIFT_DOWN = Pressed, FALSE = Not Pressed
+extern UINT16	gfCtrlState;		// CTRL_DOWN  = Pressed, FALSE = Not Pressed
+extern UINT16	gfAltState;			// ALT_DOWN   = Pressed, FALSE = Not Pressed
 
 extern BOOLEAN		gfSGPInputReceived;
 

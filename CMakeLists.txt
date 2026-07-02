@@ -38,6 +38,13 @@ set(usingMsBuild $<STREQUAL:${CMAKE_VS_PLATFORM_NAME},Win32>)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_compile_definitions(CINTERFACE XML_STATIC VFS_STATIC VFS_WITH_SLF VFS_WITH_7ZIP _CRT_SECURE_NO_DEPRECATE)
+
+# Enable the Win32 SEH crash handler (as the original MSBuild release did).
+# Without this, SGPExceptionFilter catches access violations but does NOT call
+# RecordExceptionInfo(), so a crash gives the generic "Unable to recover." box
+# with no stack_trace.log. Defining it makes the handler write a symbolized
+# backtrace (needs the .pdb next to the exe) so crashes can be diagnosed.
+add_compile_definitions(ENABLE_EXCEPTION_HANDLING)
 include_directories(
   "${CMAKE_SOURCE_DIR}/Ja2"
   "${CMAKE_SOURCE_DIR}/ext/VFS/include"
@@ -54,7 +61,16 @@ include_directories(
   "${CMAKE_SOURCE_DIR}/Multiplayer"
   "${CMAKE_SOURCE_DIR}/Editor"
   "${CMAKE_SOURCE_DIR}/i18n/include"
+  "${CMAKE_SOURCE_DIR}/ext/SDL3/include"
+  "${CMAKE_SOURCE_DIR}/ext/SDL3_mixer/include"
 )
+
+# SDL3 + SDL3_mixer (vendored prebuilt, 32-bit x86 MSVC) replace DirectDraw /
+# DirectInput / DirectSound / FMOD / the Win32 window + message pump. Shipped as
+# SDL3.dll + SDL3_mixer.dll next to the exe (built /MD, DLL-safe against this
+# project's static /MT CRT).
+find_package(SDL3 CONFIG REQUIRED PATHS "${CMAKE_SOURCE_DIR}/ext/SDL3/cmake" NO_DEFAULT_PATH)
+find_package(SDL3_mixer CONFIG REQUIRED PATHS "${CMAKE_SOURCE_DIR}/ext/SDL3_mixer/cmake" NO_DEFAULT_PATH)
 
 # external libraries
 add_subdirectory("ext/libpng")
@@ -143,7 +159,7 @@ foreach(app IN LISTS ApplicationTargets)
       sgp/sgp.cpp
       Ja2/Res/ja2.rc
     )
-    target_link_libraries(${exe} PRIVATE ${Ja2_Libraries} $<IF:${usingMsBuild},legacy_stdio_definitions.lib,>)
+    target_link_libraries(${exe} PRIVATE ${Ja2_Libraries} SDL3::SDL3 $<IF:${usingMsBuild},legacy_stdio_definitions.lib,>)
     target_link_options(${exe} PRIVATE $<IF:${usingMsBuild},/SAFESEH:NO,>)
     target_compile_definitions(${exe} PRIVATE ${compilationFlags} ${debugFlags})
 
@@ -161,7 +177,13 @@ foreach(app IN LISTS ApplicationTargets)
   endforeach()
 
   # for SGP only
-  target_link_libraries(${app}_sgp PRIVATE "ddraw.lib" "${PROJECT_SOURCE_DIR}/fmodvc.lib")
+  # SDL3 port: ddraw.lib dropped (video.cpp no longer calls DirectDrawCreate /
+  # IID_IDirectDraw2, the only ddraw.lib import symbols) and fmodvc.lib dropped
+  # (soundman.cpp is now SDL3_mixer, not FMOD/DirectSound). DirectDraw Calls.cpp
+  # / DirectX Common.cpp stay compiled: they only make COM vtable calls + use
+  # DDERR_* constants (no import symbols) and provide wrapper symbols a few dead
+  # VObject helpers reference. SDL3 owns window/video/input; SDL3_mixer owns audio.
+  target_link_libraries(${app}_sgp PRIVATE SDL3::SDL3 SDL3_mixer::SDL3_mixer)
   target_link_libraries(${app}_sgp PRIVATE libpng)
   target_compile_definitions(${app}_sgp PRIVATE ${compilationFlags} ${debugFlags} NO_ZLIB_COMPRESSION)
 endforeach()

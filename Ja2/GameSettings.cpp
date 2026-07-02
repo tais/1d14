@@ -1143,7 +1143,10 @@ void LoadGameExternalOptions()
 	gGameExternalOptions.autoSaveTime 					= iniReader.ReadInteger("Troubleshooting Settings","AUTO_SAVE_EVERY_N_HOURS", 6, 0, 24);
 
 	//################# Graphics Settings #################
-	gGameExternalOptions.gfVSync = iniReader.ReadBoolean("Graphics Settings","VERTICAL_SYNC",0);
+	// Default vsync ON: SDL presents (incl. the synchronous laptop-zoom / fade /
+	// auto-resolve RefreshScreen loops) run uncapped otherwise and tear on the
+	// fast transitions. Set VERTICAL_SYNC=0 in the ini to opt out.
+	gGameExternalOptions.gfVSync = iniReader.ReadBoolean("Graphics Settings","VERTICAL_SYNC",1);
 
 	gGameExternalOptions.giPlayerTurnSpeedUpFactor		= iniReader.ReadFloat("Graphics Settings","PLAYER_TURN_SPEED_UP_FACTOR",1.0, 0, 1.0);
 	gGameExternalOptions.giEnemyTurnSpeedUpFactor		= iniReader.ReadFloat("Graphics Settings","ENEMY_TURN_SPEED_UP_FACTOR",1.0, 0, 1.0);

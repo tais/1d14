@@ -24,17 +24,12 @@
 #include "DEBUG.H"
 #include "FileMan.h"
 #include "SMACK.H"
-#include "ddraw.h"
-#include "DirectX Common.h"
-#include "DirectDraw Calls.h"
 #include "Cinematics.h"
 #include "soundman.h"
 #include <vfs/Core/vfs.h>
 #include <vfs/Core/vfs_file_raii.h>
 
 	#include "video.h"
-
-#include "vsurface_private.h"
 
 
 
@@ -63,9 +58,6 @@ BOOLEAN		fSuspendFlics = FALSE;
 UINT32		uiFlicsPlaying = 0;
 UINT32		guiSmackPixelFormat = SMACKBUFFER565;
 
-LPDIRECTDRAWSURFACE lpVideoPlayback=NULL;
-LPDIRECTDRAWSURFACE2 lpVideoPlayback2=NULL;
-
 
 //-Function-Prototypes-------------------------------------------------------------
 void			SmkInitialize(HWND hWindow, UINT32 uiWidth, UINT32 uiHeight);
@@ -84,7 +76,6 @@ BOOLEAN SmkPollFlics(void)
 {
 	UINT32 uiCount;
 	BOOLEAN fFlicStatus = FALSE;
-	DDSURFACEDESC SurfaceDescription;
 
 	for(uiCount=0; uiCount < SMK_NUM_FLICS; uiCount++)
 	{
@@ -95,15 +86,19 @@ BOOLEAN SmkPollFlics(void)
 			{
 				if(!SmackWait(SmkList[uiCount].SmackHandle))
 				{
-					DDLockSurface(SmkList[uiCount].lpDDS, NULL, &SurfaceDescription, 0, NULL);
+					// SDL3 port: render the decoded frame straight into the SDL-backed 16-bit RGB565
+					// FRAME_BUFFER. The DirectDraw lock/unlock is replaced by the SGP-level
+					// LockVideoSurface pair; uiPitch is bytes, matching the old lPitch.
+					UINT32 uiPitch;
+					BYTE* pSurf = LockVideoSurface( FRAME_BUFFER, &uiPitch );
 					SmackToBuffer(SmkList[uiCount].SmackHandle,SmkList[uiCount].uiLeft,
 																					SmkList[uiCount].uiTop,
-																					SurfaceDescription.lPitch,
-																					SmkList[uiCount].SmackHandle->Height,
-																					SurfaceDescription.lpSurface,
-																					guiSmackPixelFormat);
+																					uiPitch,
+																					SCREEN_HEIGHT,
+																					pSurf,
+																					SMACKBUFFER565);
 					SmackDoFrame(SmkList[uiCount].SmackHandle);
-					DDUnlockSurface(SmkList[uiCount].lpDDS, SurfaceDescription.lpSurface);
+					UnLockVideoSurface( FRAME_BUFFER );
 					// temp til I figure out what to do with it
 					//InvalidateRegion(0,0, 640, 480, FALSE);
 
@@ -220,12 +215,9 @@ SMKFLIC *SmkOpenFlic(const CHAR8 *cFilename)
 		}
 	}
 
-	// Allocate a Smacker buffer for video decompression
-	if(!(pSmack->SmackBuffer=SmackBufferOpen(hDisplayWindow,SMACKAUTOBLIT,SCREEN_WIDTH,SCREEN_HEIGHT,0,0)))
-	{
-		ErrorMsg("SMK ERROR: Can't allocate a Smacker decompression buffer");
-		return(NULL);
-	}
+	// SDL3 port: the SmackBufferOpen(SMACKAUTOBLIT) decompression buffer bound the decoder to an
+	// HWND and could probe DirectDraw. It is unused for the actual blit (which goes via
+	// SmackToBuffer into FRAME_BUFFER), so it is dropped along with its SmackBufferClose.
 //	if(!(pSmack->SmackHandle=SmackOpen(cFilename, SMACKTRACKS, SMACKAUTOEXTRA)))
 	vfs::Path tempfilename;
 	try
@@ -250,7 +242,6 @@ SMKFLIC *SmkOpenFlic(const CHAR8 *cFilename)
 	SmkSetupVideo();
 
 	pSmack->cFilename=cFilename;
-	pSmack->lpDDS=lpVideoPlayback2;
 	pSmack->hWindow=hDisplayWindow;
 
 	// Smack flic is now open and ready to go
@@ -270,8 +261,7 @@ void SmkCloseFlic(SMKFLIC *pSmack)
 	// Attempt opening the filename
 	FileClose(pSmack->hFileHandle);
 
-	// Deallocate the smack buffers
-	SmackBufferClose(pSmack->SmackBuffer);
+	// SDL3 port: no SmackBuffer is allocated (SmackBufferOpen was dropped), so nothing to close here.
 
 	// Close the smack flic
 	SmackClose(pSmack->SmackHandle);
@@ -293,33 +283,9 @@ SMKFLIC *SmkGetFreeFlic(void)
 
 void SmkSetupVideo(void)
 {
-// DEF:
-//	lpVideoPlayback2 = CinematicModeOn();
-
-	HVSURFACE hVSurface;
-	GetVideoSurface( &hVSurface, FRAME_BUFFER );
-	lpVideoPlayback2 = GetVideoSurfaceDDSurface( hVSurface );
-
-	DDSURFACEDESC SurfaceDescription;
-	ZEROMEM(SurfaceDescription);
-	SurfaceDescription.dwSize = sizeof (DDSURFACEDESC);
-	HRESULT ReturnCode = IDirectDrawSurface2_GetSurfaceDesc ( lpVideoPlayback2, &SurfaceDescription );
-	if (ReturnCode != DD_OK)
-	{
-		DirectXAttempt ( ReturnCode, __LINE__, __FILE__ );
-		return;
-	}
-
-	UINT16 usRed, usGreen, usBlue;
-	usRed	= (UINT16) SurfaceDescription.ddpfPixelFormat.dwRBitMask;
-	usGreen = (UINT16) SurfaceDescription.ddpfPixelFormat.dwGBitMask;
-	usBlue	= (UINT16) SurfaceDescription.ddpfPixelFormat.dwBBitMask;
-
-	if((usRed==0xf800) && (usGreen==0x07e0) && (usBlue==0x001f))
-		guiSmackPixelFormat=SMACKBUFFER565;
-	else
-		guiSmackPixelFormat=SMACKBUFFER555;
-
+	// SDL3 port: the FRAME_BUFFER is always 16-bit RGB565, so there is no DirectDraw surface to
+	// probe for a pixel format. Just select the 565 output path for SmackToBuffer.
+	guiSmackPixelFormat = SMACKBUFFER565;
 }
 
 void SmkShutdownVideo(void)

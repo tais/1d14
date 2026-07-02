@@ -52,8 +52,11 @@ protected:
 class popupDefContent{
 public:
 	popupDefContent();
-	~popupDefContent();
-	
+	// Virtual: popupDefContent is a polymorphic base (pure-virtual addToBox) and
+	// popupDef::~popupDef deletes derived instances through this base pointer.
+	// A non-virtual dtor there is UB and leaks the derived members.
+	virtual ~popupDefContent();
+
 	virtual BOOL addToBox(POPUP * popup) = 0;
 
 };
@@ -98,7 +101,7 @@ public:
 	popupDefContentGenerator() : generatorId(0){};
 	popupDefContentGenerator( UINT16 generatorId ) : generatorId( generatorId ){};
 
-	~popupDefContentGenerator();
+	~popupDefContentGenerator(){};
 
 	BOOL addToBox(POPUP * popup);
 

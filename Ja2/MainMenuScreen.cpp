@@ -562,6 +562,19 @@ void ClearMainMenu()
 	pDestBuf = LockVideoSurface( FRAME_BUFFER, &uiDestPitchBYTES );
 	memset(pDestBuf, 0, SCREEN_HEIGHT * uiDestPitchBYTES );
 	UnLockVideoSurface( FRAME_BUFFER );
+
+	// Also clear the SAVE buffer. RenderMainMenu blits the title flag into
+	// guiSAVEBUFFER with VO_BLT_SRCTRANSPARENCY, so flag pixels matching the
+	// transparent key are left untouched; RestoreButtonBackGrounds then restores
+	// the under-button rectangles *from* guiSAVEBUFFER. On re-entry from a game
+	// the stale (dark) in-game screen still sitting in guiSAVEBUFFER bled through
+	// those gaps as dark boxes / ghost text behind the menu items. Clear it so
+	// re-entry starts from the same clean slate as first entry. (Use
+	// ColorFillVideoSurfaceArea, not a raw LockVideoSurface+memset: it null-guards
+	// and clips to the surface's real size -- guiSAVEBUFFER is a regular VSURFACE
+	// that need not be full-screen-sized.)
+	ColorFillVideoSurfaceArea( guiSAVEBUFFER, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0 );
+
 	InvalidateScreen( );
 }
 

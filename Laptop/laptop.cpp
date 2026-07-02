@@ -700,8 +700,8 @@ void GetLaptopKeyboardInput()
 	InputAtom					InputEvent;
 	POINT	MousePos;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	fTabHandled = FALSE;
 
@@ -3832,8 +3832,8 @@ void
 CheckIfMouseLeaveScreen()
 {
  	POINT	MousePos;
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 	if((MousePos.x >LAPTOP_SCREEN_LR_X )||(MousePos.x<LAPTOP_UL_X)||(MousePos.y<LAPTOP_UL_Y )||(MousePos.y >LAPTOP_SCREEN_LR_Y))
 	{
 		guiCurrentLapTopCursor=LAPTOP_PANEL_CURSOR;

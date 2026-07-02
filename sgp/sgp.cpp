@@ -3,13 +3,20 @@
 #include "builddefines.h"
 #include "types.h"
 #include <windows.h>
+// SDL3 owns the window + event pump now. <SDL3/SDL_main.h> remaps our
+// main() to SDL_main and supplies the real Win32 WinMain, so the exe stays
+// /subsystem:windows. Include both in exactly this one TU (the one defining main).
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 #include <string.h>
+#include <stdio.h>
 #include "sgp.h"
 #include "vobject.h"
 #include "Font.h"
 #include "local.h"
 #include "FileMan.h"
 #include "input.h"
+#include "sdl_input.h"
 #include "random.h"
 #include "gameloop.h"
 #include "soundman.h"
@@ -30,7 +37,6 @@
 #include <excpt.h>
 #include "INIReader.h"
 #include "connect.h"
-#include "wine.h"
 #include "Intro.h"
 #include <Music Control.h>
 #include <language.hpp>
@@ -110,21 +116,18 @@ extern	BOOLEAN		CheckIfGameCdromIsInCDromDrive();
 extern	void		QueueEvent(UINT16 ubInputEvent, UINT32 usParam, UINT32 uiParam);
 
 // Prototype Declarations
-INT32 FAR PASCAL	WindowProcedure(HWND hWindow, UINT16 Message, WPARAM wParam, LPARAM lParam);
 BOOLEAN				InitializeStandardGamingPlatform(HINSTANCE hInstance, int sCommandShow);
 void				ShutdownStandardGamingPlatform(void);
 void				GetRuntimeSettings( );
 
-
-INT32 FAR PASCAL	SyncWindowProcedure(HWND hWindow, UINT16 Message, WPARAM wParam, LPARAM lParam);
-void				CreateStandardGamingPlatform(HWND hWindow);
 void				SafeSGPExit(void);
 static bool			CallGameLoop(bool wait);
 static CRITICAL_SECTION gcsGameLoop;
 
 
 
-int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pCommandLine, int sCommandShow);
+// The real body of the entry point. main() wraps this in Win32 SEH.
+static int			HandledMain(int argc, char** argv);
 
 
 
@@ -158,15 +161,11 @@ CHAR8				gzErrorMsg[2048]="";
 BOOLEAN				gfIgnoreMessages=FALSE;
 
 
-INT32 FAR PASCAL SyncWindowProcedure(HWND hWindow, UINT16 Message, WPARAM wParam, LPARAM lParam)
-{
-	INT32 retval;
-	EnterCriticalSection(&gcsGameLoop);
-	retval = WindowProcedure(hWindow, Message, wParam, lParam);
-	LeaveCriticalSection(&gcsGameLoop);
-	return retval;
-}
-
+// WindowProcedure + SyncWindowProcedure deleted: the Win32 WndProc message
+// cases (WM_CLOSE/quit, WM_KEY*/WM_CHAR/mouse, WM_ACTIVATEAPP focus/minimize,
+// WM_MOVE/WM_GETMINMAXINFO/WM_SETCURSOR geometry, WM_TIMER) are now handled by
+// SDL events inside SgpHandleSDLEvent (the input seam), driven by SDL_PollEvent
+// in the main loop below.
 
 bool				s_bExportStrings		= false;
 extern bool			g_bUseXML_Strings;//	= false;
@@ -174,202 +173,6 @@ bool				g_bUseXML_Structures	= false;
 //bool				g_bUseXML_Tilesets		= false;
 
 static vfs::Path	sp_force_load_jsd_xml_file;
-
-INT32 FAR PASCAL WindowProcedure(HWND hWindow, UINT16 Message, WPARAM wParam, LPARAM lParam)
-{
-	static BOOLEAN fRestore = FALSE;
-
-	if ( Message == WM_USER )
-	{
-		FreeConsole();
-		return 0L;
-	}
-	BOOL visible = IsWindowVisible(hWindow);
-	
-	if(gfIgnoreMessages)
-		return(DefWindowProc(hWindow, Message, wParam, lParam));
-
-	// ATE: This is for older win95 or NT 3.51 to get MOUSE_WHEEL Messages
-	//if ( Message == guiMouseWheelMsg )
-	//{
-	//	QueueEvent(MOUSE_WHEEL, wParam, lParam);
-	//	return( 0L );
-	//}
-
-
-
- 
-	switch(Message)
-	{
-	case WM_CLOSE:
-		PostQuitMessage(0);
-		break;
-/*dnl kick this out, because in input.sgp MouseHandler() hook has priority so it will process same event twice, someone force MouseHandler() hook to always return unhandled events status so what ever mouse event you process in WindowProcedure() be aware that this event is already occur in MouseHandler() (mouse clicks, move etc.) Probably this is done because when you lost focus even if you click back on window region this will not restore them, so need condition in MouseHandler to restore window focus
-//		case WM_MOUSEWHEEL:
-//			{
-//				QueueEvent(MOUSE_WHEEL, wParam, lParam);
-//				break;
-//			}
-*/		
-	case WM_MOVE:
-		// if( 1==iScreenMode )
-		{
-			GetClientRect(hWindow, &rcWindow);
-			// Go ahead and clamp the client width and height
-			rcWindow.right = SCREEN_WIDTH;
-			rcWindow.bottom = SCREEN_HEIGHT;
-			ClientToScreen(hWindow, (LPPOINT)&rcWindow);
-			ClientToScreen(hWindow, (LPPOINT)&rcWindow+1);
-			int xPos = (int)(short) LOWORD(lParam); 
-			int yPos = (int)(short) HIWORD(lParam);
-			BOOL needchange = FALSE;
-			if (xPos < 0)
-			{
-				xPos = 0;
-				needchange = TRUE;
-			}
-			if (yPos < 0)
-			{
-				yPos = 0;
-				needchange = TRUE;
-			}
-			if (needchange)
-			{
-				SetWindowPos( hWindow, NULL, xPos, yPos, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
-			}
-
-		}
-		break;
-	case WM_GETMINMAXINFO:
-		{
-			MINMAXINFO *mmi = (MINMAXINFO*)lParam;
-
-			mmi->ptMaxSize = ptWindowSize;
-			mmi->ptMaxTrackSize = mmi->ptMaxSize;
-			mmi->ptMinTrackSize = mmi->ptMaxSize;
-			break;
-		}
-	case WM_SETCURSOR:
-		SetCursor( NULL);
-		return TRUE;
-
-	case WM_TIMER:
-#ifdef LUACONSOLE
-		PollConsole( );
-#endif
-		if (gfApplicationActive)
-		{
-			GameLoop();		
-		} 
-		break;
-
-	case WM_ACTIVATEAPP: 
-		switch(wParam)
-		{
-		case TRUE: // We are restarting DirectDraw
-			if (fRestore == TRUE)
-			{
-				RestoreVideoManager();
-				RestoreVideoSurfaces();	// Restore any video surfaces
-
-				// unpause the JA2 Global clock
-				if ( !gfPauseDueToPlayerGamePause )
-				{
-					PauseTime( FALSE );
-				}
-				gfApplicationActive = TRUE;
-			}
-			break;
-		case FALSE: // We are suspending direct draw
-			if (iScreenMode == 0)
-			{
-				// pause the JA2 Global clock
-				//PauseTime( TRUE );
-				SuspendVideoManager();
-				// suspend movement timer, to prevent timer crash if delay becomes long
-				// * it doesn't matter whether the 3-D engine is actually running or not, or if it's even been initialized
-				// * restore is automatic, no need to do anything on reactivation
-				// gfApplicationActive = FALSE;
-				fRestore = TRUE;
-			}
-			break;
-		}
-		break;
-
-	case WM_CREATE:
-
-		CreateStandardGamingPlatform(hWindow);
-		break;
-
-	case WM_DESTROY: 
-		ShutdownStandardGamingPlatform();
-//		ShowCursor(TRUE);
-		PostQuitMessage(0);
-		break;
-
-	case WM_SETFOCUS:
-		//if (iScreenMode == 0)
-		{
-			RestoreCursorClipRect( );
-		}
-		break;
-
-	case WM_KILLFOCUS:
-		if (iScreenMode == 0)
-		{
-			// Set a flag to restore surfaces once a WM_ACTIVEATEAPP is received
-			fRestore = TRUE;
-		}
-		break;
-
-	case	WM_DEVICECHANGE:
-		{
-			//DEV_BROADCAST_HDR	*pHeader = (DEV_BROADCAST_HDR	*)lParam;
-
-			////if a device has been removed
-			//if( wParam == DBT_DEVICEREMOVECOMPLETE )
-			//{
-			//	//if its	a disk
-			//	if( pHeader->dbch_devicetype == DBT_DEVTYP_VOLUME )
-			//	{
-			//		//check to see if the play cd is still in the cdrom
-			//		if( !CheckIfGameCdromIsInCDromDrive() )
-			//		{
-			//		}
-			//	}
-			//}
-		}
-		break;
-
-	case WM_SYSKEYUP:
-	case WM_KEYUP:
-		KeyUp(wParam, lParam);
-		break;
-
-	case WM_SYSKEYDOWN:
-	case WM_KEYDOWN:
-			KeyDown(wParam, lParam);
-			gfSGPInputReceived =	TRUE;
-			break;
-
-		case WM_CHAR:
-			{
-				// WANNE: We disable this for now in multiplayer, because user could enter "\" for the file transfer path
-				if (!is_networked)
-				{
-					if (wParam == '\\' &&
-						lParam && KF_ALTDOWN)
-					{
-					}
-				}				
-			}
-			break;
-
-	default	:
-		return DefWindowProc(hWindow, Message, wParam, lParam);
-	}
-	return 0L;
-}
 
 BOOLEAN InitializeStandardGamingPlatform(HINSTANCE hInstance, int sCommandShow)
 {
@@ -419,8 +222,9 @@ BOOLEAN InitializeStandardGamingPlatform(HINSTANCE hInstance, int sCommandShow)
 
 
 	FastDebugMsg("Initializing Video Manager");
-	// Initialize DirectDraw (DirectX 2)
-	if (InitializeVideoManager(hInstance, (UINT16) sCommandShow, (void *) WindowProcedure) == FALSE)
+	// The video seam now creates the SDL window + renderer + texture; the
+	// third (WindowProc) argument is ignored but the 3-arg signature stays.
+	if (InitializeVideoManager(ghInstance, (UINT16) sCommandShow, NULL) == FALSE)
 	{
 		// We were unable to initialize the video manager
 		FastDebugMsg("FAILED : Initializing Video Manager");
@@ -527,32 +331,22 @@ BOOLEAN InitializeStandardGamingPlatform(HINSTANCE hInstance, int sCommandShow)
 		return FALSE;
 	}
 
-	// Register mouse wheel message
-	guiMouseWheelMsg = RegisterWindowMessage( MSH_MOUSEWHEEL );
-
+	// SDL delivers mouse-wheel input natively as SDL_EVENT_MOUSE_WHEEL, so
+	// the legacy RegisterWindowMessage(MSH_MOUSEWHEEL) path is gone. The
+	// guiMouseWheelMsg global is kept (defined above) but no longer assigned.
 	gfGameInitialized = TRUE;
 
 	return TRUE;
 }
 
-static void TimerActivatedCallback(INT32 timer, PTR state)
-{
-	if (gfApplicationActive && gfProgramIsRunning)
-	{
-		if (CallGameLoop(false))
-			YieldProcessor();
-	}
-}
-
-void CreateStandardGamingPlatform(HWND hWindow)
-{
-	InitializeJA2Clock();
-
-	if (!IsHiSpeedClockMode())
-		SetTimer( hWindow, 0, 1, NULL);
-	else
-		AddTimerNotifyCallback(TimerActivatedCallback, hWindow);
-}
+// TimerActivatedCallback + CreateStandardGamingPlatform (the WM_CREATE
+// handler) deleted. The notify-thread used to drive GameLoop via
+// AddTimerNotifyCallback(TimerActivatedCallback); that could run
+// RefreshScreen -> SDL present off the main thread, which is not allowed.
+// The main loop is now the ONLY GameLoop driver, so we just call
+// InitializeJA2Clock() directly from HandledMain() (no SetTimer / notify
+// callback). The Timer Control.cpp clock/notify threads still run; they
+// simply have no GameLoop callback registered.
 
 
 void ShutdownStandardGamingPlatform(void)
@@ -681,8 +475,46 @@ private:
 //	}
 //};
 
-int PASCAL WinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pCommandLine, int sCommandShow)
+// Make the process DPI-aware at startup. SDL3 does not set DPI awareness for
+// us and we cannot embed a manifest here, so do it programmatically before any
+// window exists. Without this, Windows virtualizes window/mouse coordinates on
+// a scaled (HiDPI) display: GetCursorPos()+ScreenToClient() (which drives the
+// game's hit-testing in gameloop.cpp) and the SDL event coordinates (which
+// drive the software cursor) then disagree, so the cursor is drawn in one place
+// while clicks register in another. Resolve the API dynamically so we don't
+// depend on a particular Windows SDK header level.
+static void MakeProcessDpiAware(void)
 {
+	if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll"))
+	{
+		typedef BOOL (WINAPI *PFN_SetCtx)(HANDLE);
+		if (PFN_SetCtx p = (PFN_SetCtx)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext"))
+		{
+			// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)-4 (Win10 1703+),
+			// PER_MONITOR_AWARE == (HANDLE)-3 as a fallback.
+			if (p((HANDLE)-4)) return;
+			if (p((HANDLE)-3)) return;
+		}
+	}
+	if (HMODULE hShcore = LoadLibraryW(L"Shcore.dll"))
+	{
+		typedef HRESULT (WINAPI *PFN_SetAwareness)(int);
+		if (PFN_SetAwareness p = (PFN_SetAwareness)GetProcAddress(hShcore, "SetProcessDpiAwareness"))
+		{
+			p(2); // PROCESS_PER_MONITOR_DPI_AWARE
+			FreeLibrary(hShcore);
+			return;
+		}
+		FreeLibrary(hShcore);
+	}
+	SetProcessDPIAware(); // Vista+ system-DPI fallback
+}
+
+int main(int argc, char** argv)
+{
+	// Must run before SDL_Init / any window creation (see MakeProcessDpiAware).
+	MakeProcessDpiAware();
+
 #ifdef _DEBUG
 	// Use this one ONLY if you're having memory corruption issues that can be repeated in a short time
 	// Otherwise it will just run out of memory.
@@ -698,13 +530,35 @@ int PASCAL WinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pCommandL
 	/****************************************************************************************************/
 #endif
 
-//If we are to use exception handling
-#ifdef ENABLE_EXCEPTION_HANDLING
-	int Result = -1;
+	// SDL_main.h remapped this main() to SDL_main and provides the real Win32
+	// WinMain, so there is no HINSTANCE parameter any more -- recover it from
+	// the module handle for the ~1 file that extern-references ghInstance.
+	ghInstance = GetModuleHandle(NULL);
 
+	// SDL must be up before InitializeStandardGamingPlatform, because the
+	// video seam's InitializeVideoManager creates the SDL window/renderer.
+	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+	{
+		return 1;
+	}
+	// SDL_Quit MUST run after ShutdownVideoManager (which destroys the SDL
+	// window/renderer/texture). ShutdownVideoManager runs via atexit(SafeSGPExit)
+	// registered later (in InitializeStandardGamingPlatform), so registering
+	// SDL_Quit here -- earlier -- makes atexit's LIFO order run SafeSGPExit ->
+	// ShutdownVideoManager first and SDL_Quit last. Calling SDL_Quit inline before
+	// the atexit teardown instead double-destroyed the freed SDL objects on every
+	// clean exit (the X button / quit), which is UB and could trip the crash box.
+	atexit(SDL_Quit);
+
+	// Keep the Win32 SEH wrapper (Windows-only, MSVC): run the real body
+	// under __try/__except so RecordExceptionInfo() logs any structured
+	// exception. main() itself holds no C++ objects needing unwinding, so
+	// this satisfies the MSVC SEH/C++ mixing rule (C2712).
+	int Result = -1;
+#ifdef ENABLE_EXCEPTION_HANDLING
 	__try
 	{
-		Result = HandledWinMain(hInstance, hPrevInstance, pCommandLine, sCommandShow);
+		Result = HandledMain(argc, argv);
 	}
 	__except( RecordExceptionInfo( GetExceptionInformation() ))
 	{
@@ -712,35 +566,28 @@ int PASCAL WinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pCommandL
 		// everything that is needed. Actually this code won't even
 		// get called unless you return EXCEPTION_EXECUTE_HANDLER from
 		// the __except clause.
-
-
 	}
-	return Result;
+#else
+	Result = HandledMain(argc, argv);
+#endif
 
+	// SDL_Quit() is now registered via atexit() (see above) so it runs AFTER
+	// ShutdownVideoManager, not before it.
+	return Result;
 }
 
-//Do not place code in between WinMain and Handled WinMain
+//Do not place code in between main and HandledMain
 
 
 
-int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pCommandLine, int sCommandShow)
+static int HandledMain(int argc, char** argv)
 {
-//DO NOT REMOVE, used for exception handing list above in WinMain
-#endif
-	MSG				Message;
+	// The command line is reconstructed from GetCommandLineA() below, so
+	// argc/argv are unused here (main() only needs them for SDL_main).
+	(void)argc;
+	(void)argv;
+
 	HWND			hPrevInstanceWindow;
-	UINT32			uiTimer = 0;
-
-	// Make sure the game works out of the box on Linux/macOS/Android (WINE)
-	if (wine_add_dll_overrides())
-	{
-		/* newly added dll overrides only work after a restart */
-		char exe_path[MAX_PATH] = { 0 };
-		GetModuleFileNameA(NULL, exe_path, _countof(exe_path));
-
-		ShellExecuteA(NULL, "open", exe_path, pCommandLine, NULL, sCommandShow);
-		return 0;
-	}
 
 	vfs::Log::setSharedString( getGameID() );
 	//if(!vfs::Aspects::getMutexFactory())
@@ -758,7 +605,10 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 
 	// Make sure that only one instance of this application is running at once
 	// // Look for prev instance by searching for the window
-	hPrevInstanceWindow = FindWindowEx( NULL, NULL, APPLICATION_NAME, APPLICATION_NAME );
+	// Match by TITLE only (pass NULL class): SDL registers its own Win32 window
+	// class, not APPLICATION_NAME, so matching on class would never find a prior
+	// instance. Our SDL window's title is APPLICATION_NAME (set in video.cpp).
+	hPrevInstanceWindow = FindWindowEx( NULL, NULL, NULL, APPLICATION_NAME );
 
 	// One is found, bring it up!
 	if ( hPrevInstanceWindow != NULL )
@@ -784,7 +634,7 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 	// Use this one ONLY if you're having memory corruption issues that can be repeated in a short time
 	// Otherwise it will just run out of memory.
 	//_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_ALWAYS_DF);
-	
+
 	/****************************************************************************************************/
 	/*                                                                                                  */
 	/*               DEBUG MEMORY ALLOCATION ON THE HEAP :  uncomment when required                     */
@@ -796,7 +646,34 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 
 #endif
 
-	ghInstance = hInstance;
+	// ghInstance was already set in main(); keep it here for link-compat too.
+	ghInstance = GetModuleHandle(NULL);
+
+	// Reconstruct the args-only command line for the legacy helpers.
+	// GetCommandLineA() returns the whole line WITH the module path as the
+	// first token; strip it so gzCommandLine and ProcessJa2CommandLine... see
+	// exactly what the old WinMain's pCommandLine (arguments only) contained.
+	// PopulateSectionFromCommandLine still parses GetCommandLineW() as before.
+	LPSTR	pFullCommandLine = GetCommandLineA();
+	CHAR8	*pCommandLine = pFullCommandLine;
+	if (*pCommandLine == '"')
+	{
+		// Quoted module path: skip past the closing quote.
+		pCommandLine++;
+		while (*pCommandLine && *pCommandLine != '"')
+			pCommandLine++;
+		if (*pCommandLine == '"')
+			pCommandLine++;
+	}
+	else
+	{
+		// Unquoted module path: skip to the first whitespace.
+		while (*pCommandLine && *pCommandLine != ' ' && *pCommandLine != '\t')
+			pCommandLine++;
+	}
+	// Skip the whitespace separating the module path from the first argument.
+	while (*pCommandLine == ' ' || *pCommandLine == '\t')
+		pCommandLine++;
 
 	// Copy commandline!
 	strncpy( gzCommandLine, pCommandLine, 100);
@@ -816,7 +693,7 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 	try
 	{
 		// Inititialize the SGP
-		if (InitializeStandardGamingPlatform(hInstance, sCommandShow) == FALSE)
+		if (InitializeStandardGamingPlatform(ghInstance, SW_SHOW) == FALSE)
 		{
 			// We failed to initialize the SGP
 			return 0;
@@ -846,23 +723,108 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 
 	FastDebugMsg("Running Game");
 
-	// At this point the SGP is set up, which means all I/O, Memory, tools, etc... are available. All we need to do is 
-	// attend to the gaming mechanics themselves
-	Message.wParam = 0;
+	// Start the SGP local clock. This used to run from the WM_CREATE handler
+	// (CreateStandardGamingPlatform); with SDL owning the window we call it
+	// directly. Deliberately NO AddTimerNotifyCallback / SetTimer: the main
+	// loop below is the ONLY GameLoop driver, so GameLoop (and the
+	// RefreshScreen -> SDL present it performs) always runs on this thread.
+	InitializeJA2Clock();
 
+	// At this point the SGP is set up, which means all I/O, Memory, tools, etc... are available. All we need to do is
+	// attend to the gaming mechanics themselves
 	try
 	{
 		MAGIC();
 		while (gfProgramIsRunning)
 		{
-			if (!GetMessage(&Message, NULL, 0, 0))
+			// GameLoop's own frame limiter is commented out, so measure the
+			// iteration and sleep off any slack afterwards to cap CPU usage.
+			DWORD dwFrameStart = GetTickCount();
+
+			// Pump every pending SDL event through the input seam. It owns ALL
+			// event handling: key/mouse -> JA2 input queue, window focus and
+			// minimize -> gfApplicationActive, and window-close / quit ->
+			// returns TRUE (we then request program exit). We do NOT duplicate
+			// any of that here.
+			SDL_Event e;
+			while (SDL_PollEvent(&e))
 			{
-				// It's quitting time
-				return Message.wParam;
+				// Opt-in mouse-coordinate diagnostics (set the JA2_MOUSE_DEBUG
+				// environment variable): dumps the window / pixel / render /
+				// logical coordinate spaces once, then every raw-vs-converted
+				// mouse position, to mouse_debug.log in the working dir. Zero
+				// cost unless the env var is set. Used to pin down HiDPI /
+				// display-scaling cursor offsets on real hardware.
+				static const BOOLEAN	gfMouseDbg = (SDL_getenv("JA2_MOUSE_DEBUG") != NULL);
+				static FILE*			pMouseDbgFile = NULL;
+				if (gfMouseDbg && pMouseDbgFile == NULL)
+				{
+					pMouseDbgFile = fopen("mouse_debug.log", "w");
+					if (pMouseDbgFile != NULL)
+					{
+						SDL_Renderer*	r = SGP_GetSDLRenderer();
+						SDL_Window*		w = r ? SDL_GetRenderWindow(r) : NULL;
+						int ww=0,wh=0, pw=0,ph=0, ow=0,oh=0, lw=0,lh=0;
+						SDL_RendererLogicalPresentation lp = SDL_LOGICAL_PRESENTATION_DISABLED;
+						SDL_FRect lr; lr.x=lr.y=lr.w=lr.h=0.f;
+						if (w) { SDL_GetWindowSize(w,&ww,&wh); SDL_GetWindowSizeInPixels(w,&pw,&ph); }
+						if (r) { SDL_GetCurrentRenderOutputSize(r,&ow,&oh);
+						         SDL_GetRenderLogicalPresentation(r,&lw,&lh,&lp);
+						         SDL_GetRenderLogicalPresentationRect(r,&lr); }
+						fprintf(pMouseDbgFile,
+							"config: window=%dx%d windowPx=%dx%d renderOut=%dx%d logical=%dx%d mode=%d rect=(%.1f,%.1f %.1fx%.1f)\n",
+							ww,wh, pw,ph, ow,oh, lw,lh, (int)lp, lr.x,lr.y,lr.w,lr.h);
+						fflush(pMouseDbgFile);
+					}
+				}
+				float	fRawX = 0.f, fRawY = 0.f;
+				const BOOLEAN	fIsMotion = (e.type == SDL_EVENT_MOUSE_MOTION);
+				const BOOLEAN	fIsButton = (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+				                             e.type == SDL_EVENT_MOUSE_BUTTON_UP);
+				if (fIsMotion) { fRawX = e.motion.x; fRawY = e.motion.y; }
+				if (fIsButton) { fRawX = e.button.x; fRawY = e.button.y; }
+
+				if (SGP_GetSDLRenderer())
+					SDL_ConvertEventToRenderCoordinates(SGP_GetSDLRenderer(), &e);
+
+				if (gfMouseDbg && pMouseDbgFile != NULL && fIsMotion)
+				{
+					fprintf(pMouseDbgFile, "motion raw=(%.1f,%.1f) -> conv=(%.1f,%.1f)\n",
+					        fRawX, fRawY, e.motion.x, e.motion.y);
+					fflush(pMouseDbgFile);
+				}
+				if (gfMouseDbg && pMouseDbgFile != NULL && fIsButton)
+				{
+					fprintf(pMouseDbgFile, "button %s raw=(%.1f,%.1f) -> conv=(%.1f,%.1f)  gusMouse=(%d,%d)\n",
+					        e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? "DOWN" : "UP",
+					        fRawX, fRawY, e.button.x, e.button.y,
+					        (int)gusMouseXPos, (int)gusMouseYPos);
+					fflush(pMouseDbgFile);
+				}
+
+				if (SgpHandleSDLEvent(&e))
+					gfProgramIsRunning = FALSE;
 			}
-			// Ok, now that we have the message, let's handle it
-			TranslateMessage(&Message);
-			DispatchMessage(&Message);
+
+			if (gfApplicationActive && gfProgramIsRunning)
+			{
+				CallGameLoop(true);
+			}
+			else
+			{
+				// Minimized / unfocused: don't burn a core spinning.
+				SDL_Delay(5);
+			}
+
+			// Frame pacing: target ~60 FPS. If the whole iteration took less
+			// than 15 ms, sleep off the remainder so the bare loop does not
+			// busy-spin at 100% CPU (GetTickCount wraps cleanly under DWORD
+			// arithmetic).
+			DWORD dwFrameTime = GetTickCount() - dwFrameStart;
+			if (dwFrameTime < 15)
+			{
+				SDL_Delay(15 - dwFrameTime);
+			}
 		}
 	}
 	catch(sgp::Exception &ex)
@@ -898,13 +860,11 @@ int PASCAL HandledWinMain(HINSTANCE hInstance,	HINSTANCE hPrevInstance, LPSTR pC
 
 	// This is the normal exit point
 	FastDebugMsg("Exiting Game");
-	PostQuitMessage(0);
 
 	// SGPExit() will be called next through the atexit() mechanism...	This way we correctly process both normal exits and
 	// emergency aborts (such as those caused by a failed assertion).
 
-	// return wParam of the last message received
-	return Message.wParam;
+	return 0;
 }
 
 
@@ -936,9 +896,9 @@ void GetRuntimeSettings( )
 {
 	int		iMaximize;
 
-	/* Detect cnc-ddraw and disable windowed mode */
-	BOOL bCncDdraw = GetProcAddress(GetModuleHandleW(L"ddraw.dll"), "GameHandlesClose") != NULL;
-	
+	// cnc-ddraw detection retired: SDL3 owns presentation, there is no
+	// DirectDraw shim to coax into fullscreen.
+
 	vfs::PropertyContainer oProps;
 	oProps.initFromIniFile(GAME_INI_FILE);
 	PopulateSectionFromCommandLine(oProps, "Ja2 Settings");
@@ -955,7 +915,7 @@ void GetRuntimeSettings( )
 	//iMaximize = (int)oProps.getIntProperty(L"Ja2 Settings", L"SCREEN_MODE_WINDOWED_MAXIMIZE", -1);
 	iMaximize = 1;
 	
-	iWindowedMode = bCncDdraw ? 0 : (int)oProps.getIntProperty(L"Ja2 Settings", L"SCREEN_MODE_WINDOWED", -1);
+	iWindowedMode = (int)oProps.getIntProperty(L"Ja2 Settings", L"SCREEN_MODE_WINDOWED", -1);
 
 	vfs::Settings::setUseUnicode( !oProps.getBoolProperty(L"Ja2 Settings", L"VFS_NO_UNICODE", false) );
 
@@ -1189,7 +1149,7 @@ void GetRuntimeSettings( )
 	/* 1 for Windowed, 0 for Fullscreen */
 	if( !bScreenModeCmdLine )
 	{
-		iScreenMode = bCncDdraw ? 0 : (int)oProps.getIntProperty("Ja2 Settings","SCREEN_MODE_WINDOWED", iScreenMode);
+		iScreenMode = (int)oProps.getIntProperty("Ja2 Settings","SCREEN_MODE_WINDOWED", iScreenMode);
 	}
 
 	// WANNE: Should we play the intro?
@@ -1316,27 +1276,20 @@ static void PopulateSectionFromCommandLine(vfs::PropertyContainer &oProps, vfs::
 static LONG __stdcall SGPExceptionFilter(int exceptionCount, EXCEPTION_POINTERS* pExceptInfo)
 {
 #ifdef ENABLE_EXCEPTION_HANDLING
-	extern BOOL ERGetFirstModuleException(EXCEPTION_POINTERS*, HMODULE, LPSTR, INT, LPSTR, INT, INT *);
-	extern STR GetExceptionString( DWORD uiExceptionCode );
-	CHAR funcName[64], sourceName[MAX_PATH];
-	INT lineNum = 0;
+	// GetExceptionString() / ERGetFirstModuleException() / _FailMessage() were
+	// never implemented in this codebase. RecordExceptionInfo() (in
+	// debug_win_util.cpp) already writes a symbolized backtrace of the crash to
+	// stack_trace.log, which is what we need; CallGameLoop() then retries a few
+	// times and finally shows the "Unable to recover." box.
 	if (exceptionCount >= 1)
 	{
-		bool showAssert = true;
-		__try{
+		__try
+		{
 			// the exception handler writer can fail with exceptions too
 			RecordExceptionInfo(pExceptInfo);
-
-			LPCSTR exceptMsg = GetExceptionString(pExceptInfo->ExceptionRecord->ExceptionCode);
-			if ( ERGetFirstModuleException(pExceptInfo, NULL, funcName, _countof(funcName), sourceName, _countof(sourceName), &lineNum ) )
-			{
-				_FailMessage(exceptMsg, lineNum, funcName, sourceName);
-				showAssert = false;
-			}
-		} __except (EXCEPTION_EXECUTE_HANDLER) {}
-		if (showAssert) AssertMsg(FALSE, "Unhanded exception processing GameLoop unable to recover.");
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {}
 	}
-
 #endif
 
 	return EXCEPTION_EXECUTE_HANDLER;

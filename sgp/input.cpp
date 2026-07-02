@@ -81,12 +81,6 @@ UINT16	gusTailIndex;
 // ATE: Added to signal if we have had input this frame - cleared by the SGP main loop
 BOOLEAN		gfSGPInputReceived = FALSE;
 
-// This is the WIN95 hook specific data and defines used to handle the keyboard and
-// mouse hook
-
-HHOOK ghKeyboardHook;
-HHOOK ghMouseHook;
-
 // If the following pointer is non NULL then input characters are redirected to
 // the related string
 
@@ -103,129 +97,6 @@ void	QueueEvent(UINT16 ubInputEvent, UINT32 usParam, UINT32 uiParam);
 void	RedirectToString(UINT16 uiInputCharacter);
 void	HandleSingleClicksAndButtonRepeats( void );
 void	AdjustMouseForWindowOrigin(void);
-
-// These are the hook functions for both keyboard and mouse
-
-LRESULT CALLBACK KeyboardHandler(int Code, WPARAM wParam, LPARAM lParam)
-{
-	if (Code < 0) // Do not handle this message, pass it on to another window
-		return CallNextHookEx(ghKeyboardHook, Code, wParam, lParam);
-
-	if (lParam & TRANSITION_MASK) // The key has been released
-		KeyUp(wParam, lParam);		//gfSGPInputReceived =	TRUE;
-	else
-	{ // Key was up
-	KeyDown(wParam, lParam);
-	gfSGPInputReceived =	TRUE;
-	}
-	return TRUE;
-}
-
-
-LRESULT CALLBACK MouseHandler(int Code, WPARAM wParam, LPARAM lParam)
-{
-	UINT32 uiParam;
-	POINT mpos;
-	MOUSEHOOKSTRUCTEX* p_mhs;
-
-	if (Code < 0) // Do not handle this message, pass it on to another window
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-	
-	p_mhs = (MOUSEHOOKSTRUCTEX*)lParam;
-
-	mpos = ((MOUSEHOOKSTRUCT *)lParam)->pt;
-	ScreenToClient( ghWindow, &mpos);
-	gusMouseXPos = (INT16)mpos.x;
-	gusMouseYPos = (INT16)mpos.y;
-	uiParam = gusMouseYPos;
-	uiParam = uiParam << 16;
-	uiParam = uiParam | gusMouseXPos;
-
-	switch (wParam)
-	{
-	case WM_XBUTTONDOWN://** code is working
-		if( p_mhs->mouseData== (XBUTTON1<<16) ) 			//MessageBeep(-1);
-		{
-			gfX1ButtonState = TRUE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X1_BUTTON_DOWN, 0, uiParam);
-		}
-		if( p_mhs->mouseData== (XBUTTON2<<16) ) 			//MessageBeep(0x00000040L);
-		{
-			gfX2ButtonState = TRUE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X2_BUTTON_DOWN, 0, uiParam);
-		}
-		break;
-	case WM_XBUTTONUP://** code is working
-		if( p_mhs->mouseData== (XBUTTON1<<16) )
-		{
-			gfX1ButtonState = FALSE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X1_BUTTON_UP, 0, uiParam);
-		}
-		if( p_mhs->mouseData== (XBUTTON2<<16) )
-		{
-			gfX2ButtonState = FALSE;			
-			gfSGPInputReceived =	TRUE;
-			QueueEvent(X2_BUTTON_UP, 0, uiParam);
-		}
-		break;
-	case WM_MOUSEWHEEL:
-		gsMouseWheelDeltaValue = GetMouseWheelDeltaValue(((MOUSEHOOKSTRUCTEX *)lParam)->mouseData);//dnl ch4 210909
-		if(p_mhs->mouseData==(WHEEL_DELTA<<16))  //up	MessageBeep(-1);
-			QueueEvent(MOUSE_WHEEL_UP, 0, uiParam);
-		if(p_mhs->mouseData==(-WHEEL_DELTA<<16)) //dn  MessageBeep(0x00000040L);
-			QueueEvent(MOUSE_WHEEL_DOWN, 0, uiParam);
-		break;
-	case WM_MBUTTONDOWN:
-		gfMiddleButtonState= TRUE;			//Set that we have input
-		gfSGPInputReceived =	TRUE;//Set that we have input
-		QueueEvent(MIDDLE_BUTTON_DOWN, 0, uiParam);// Trigger an input event
-		break;
-	case WM_MBUTTONUP:
-		gfMiddleButtonState= FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(MIDDLE_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_LBUTTONDOWN: 
-		gfLeftButtonState = TRUE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(LEFT_BUTTON_DOWN, 0, uiParam);
-		break;
-	case WM_LBUTTONUP: 
-		gfLeftButtonState = FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(LEFT_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_RBUTTONDOWN:
-		gfRightButtonState = TRUE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(RIGHT_BUTTON_DOWN, 0, uiParam);
-		break;
-	case WM_RBUTTONUP:
-		gfRightButtonState = FALSE;
-		gfSGPInputReceived =	TRUE;
-		QueueEvent(RIGHT_BUTTON_UP, 0, uiParam);
-		break;
-	case WM_MOUSEMOVE:
-		// Trigger an input event
-		if (gfTrackMousePos == TRUE)
-			QueueEvent(MOUSE_POS, 0, uiParam);
-		gfSGPInputReceived =	TRUE;
-		break;
-	default:
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-	}
-
-	//ddd why below code commented?
-//	if (gusMouseXPos < 0 || gusMouseXPos >= SCREEN_WIDTH ||
-//	gusMouseYPos < 0 || gusMouseYPos >= SCREEN_HEIGHT)
-		return CallNextHookEx(ghMouseHook, Code, wParam, lParam);
-
-	return TRUE;
-}
-
 
 
 BOOLEAN InitializeInputManager(void)
@@ -261,14 +132,13 @@ BOOLEAN InitializeInputManager(void)
 	// Initialize the string input mechanism
 	gfCurrentStringInputState	= FALSE;
 	gpCurrentStringDescriptor	= NULL;
-	// Activate the hook functions for both keyboard and Mouse
-//	ghKeyboardHook = SetWindowsHookEx(WH_KEYBOARD, (HOOKPROC) KeyboardHandler, (HINSTANCE) 0, GetCurrentThreadId());
-//	DbgMessage(TOPIC_INPUT, DBG_LEVEL_2, String("Set keyboard hook returned %d", ghKeyboardHook));
 
 	InitializeCriticalSection(&gcsInputQueueLock);
 
-	ghMouseHook = SetWindowsHookEx(WH_MOUSE, (HOOKPROC) MouseHandler, (HINSTANCE) 0, GetCurrentThreadId());
-	DbgMessage(TOPIC_INPUT, DBG_LEVEL_2, String("Set mouse hook returned %d", ghMouseHook));
+	// The Win32 WH_MOUSE hook is intentionally NOT installed under the SDL3
+	// port: SDL pumps Win32 messages on this same thread, so a live thread
+	// hook would still fire and double-queue every mouse event. Mouse input
+	// now arrives through sgp/sdl_input.cpp (SgpHandleSDLEvent).
 	return TRUE;
 }
 
@@ -277,9 +147,9 @@ void ShutdownInputManager(void)
 	// There's very little to do when shutting down the input manager. In the future, this is where the keyboard and
 	// mouse hooks will be destroyed
 	UnRegisterDebugTopic(TOPIC_INPUT, "Input Manager");
-//	UnhookWindowsHookEx(ghKeyboardHook);
-	UnhookWindowsHookEx(ghMouseHook);
-	
+	// No Win32 keyboard/mouse hooks are installed under the SDL3 port, so
+	// there is nothing to unhook here (see InitializeInputManager).
+
 	DeleteCriticalSection(&gcsInputQueueLock);
 }
 
@@ -948,8 +818,8 @@ void KeyChange(UINT32 usParam, UINT32 uiParam, UINT8 ufKeyState)
 		}
 	}
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 
@@ -1115,8 +985,8 @@ void GetMousePos(SGPPoint *Point)
 {
 	POINT MousePos;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	Point->iX = (UINT32) MousePos.x;
 	Point->iY = (UINT32) MousePos.y;
@@ -1560,21 +1430,25 @@ void RestrictMouseToXYXY(UINT16 usX1, UINT16 usY1, UINT16 usX2, UINT16 usY2)
 
 void RestrictMouseCursor(SGPRect *pRectangle)
 {
-	// Make a copy of our rect....
+	// SDL3 port: keep the requested clip rect for bookkeeping
+	// (IsCursorRestricted / GetRestrictedClipCursor) but DO NOT physically
+	// confine the OS cursor. The rects passed here are in the game's logical
+	// 640x480-style framebuffer space; with SDL_SetRenderLogicalPresentation the
+	// window is letterboxed/scaled, so ClientToScreen()+ClipCursor() (which
+	// assume a 1:1 client area) would trap the physical cursor in the wrong
+	// desktop region. gusMouseX/YPos (mapped into logical space by SDL) already
+	// tracks the viewport, and the band-select / viewport clipping bound the result.
 	memcpy( &gCursorClipRect, pRectangle, sizeof( gCursorClipRect ) );
-	ClientToScreen( ghWindow, (LPPOINT)&gCursorClipRect);
-	ClientToScreen( ghWindow, ((LPPOINT)&gCursorClipRect)+1);
-	ClipCursor(&gCursorClipRect);
 	fCursorWasClipped = TRUE;
 }
 
 void FreeMouseCursor( BOOLEAN fLockForTacticalWindowedMode )
 {
-	ClipCursor(NULL);
+	// No physical OS-cursor clip on the SDL3 port (see RestrictMouseCursor).
 	fCursorWasClipped = FALSE;
 
-	// Buggler: Need to relock for fullscreen mode as ClipCursor release mouse boundary to full desktop resolution on multi-monitor setup &&
-	// for windowed mode, lockscreen only when player activates feature in tactical screen due to mouse restriction applies to desktop too!
+	// Preserve the original bookkeeping so IsCursorRestricted / gCursorClipRect
+	// stay consistent for callers that query them.
 	if ( !iWindowedMode || ( iWindowedMode && gfMouseLockedOnBorder && fLockForTacticalWindowedMode ) )
 	{
 		SGPRect			LJDRect;
@@ -1589,17 +1463,15 @@ void FreeMouseCursor( BOOLEAN fLockForTacticalWindowedMode )
 
 void RestoreCursorClipRect( void )
 {
-	if ( fCursorWasClipped )
-	{
-		ClipCursor( &gCursorClipRect );
-	}
+	// Was ClipCursor(&gCursorClipRect); no physical clip on the SDL3 port.
 }
 
 void GetRestrictedClipCursor( SGPRect *pRectangle )
 {
-	GetClipCursor((RECT *) pRectangle );
-	ScreenToClient( ghWindow, (LPPOINT)pRectangle);
-	ScreenToClient( ghWindow, ((LPPOINT)pRectangle)+1);
+	// Report the last requested clip rect (logical coords); we no longer query
+	// the OS for a physical clip region.
+	if ( pRectangle )
+		memcpy( pRectangle, &gCursorClipRect, sizeof( gCursorClipRect ) );
 }
 
 BOOLEAN IsCursorRestricted( void )
@@ -1609,11 +1481,10 @@ BOOLEAN IsCursorRestricted( void )
 
 void SimulateMouseMovement( UINT32 uiNewXPos, UINT32 uiNewYPos )
 {
-	POINT newmouse;
-	newmouse.x = uiNewXPos;
-	newmouse.y = uiNewYPos;
-	ClientToScreen( ghWindow, &newmouse);
-	SetCursorPos( newmouse.x, newmouse.y);
+	// SDL3 port: no-op. This warped the physical OS cursor via
+	// ClientToScreen()+SetCursorPos() (e.g. onto a dialog's default button);
+	// with logical-presentation scaling the mapping no longer holds, and warping
+	// the OS cursor would desync it from the SDL-tracked gusMouseX/YPos.
 }
 
 
@@ -1632,19 +1503,10 @@ BOOLEAN InputEventInside(InputAtom *Event, UINT32 uiX1, UINT32 uiY1, UINT32 uiX2
 void DequeueAllKeyBoardEvents()
 {
 	InputAtom	InputEvent;
-	MSG			KeyMessage;
 
-
-	//dequeue all the events waiting in the windows queue
-	//Give them proper processing like the old window hook method used to.
-	while( PeekMessage( &KeyMessage, ghWindow, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE ) )
-	{
-		TranslateMessage( &KeyMessage);
-		DispatchMessage( &KeyMessage);
-	}
-
-	//Now deque all the events waiting in the SGP queue
-	//Including those that were just posted in the code above
+	// Under the SDL3 port SDL owns the message pump, so the old
+	// PeekMessage/TranslateMessage/DispatchMessage(WM_KEYFIRST..WM_KEYLAST)
+	// drain is gone. Just flush everything already sitting in the SGP queue.
 	while (DequeueEvent(&InputEvent) == TRUE)
 	{
 		//dont do anything
@@ -1667,8 +1529,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(LEFT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiLeftButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;
@@ -1688,8 +1550,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(RIGHT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiRightButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;
