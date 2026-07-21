@@ -358,6 +358,13 @@ UINT32 SoundPlayRandom(STR pFilename, RANDOMPARMS *pParms)
 				pSampleList[uiSample].uiPanMax=pParms->uiPanMax;
 			}
 
+			// Guard max>=min: SoundServiceRandom computes Random(uiXxxMax-uiXxxMin),
+			// so a caller passing an explicit Max below Min would underflow the
+			// UINT32 subtraction (ambient scheduled ~never, garbage vol/pan).
+			if( pSampleList[uiSample].uiTimeMax < pSampleList[uiSample].uiTimeMin ) pSampleList[uiSample].uiTimeMax = pSampleList[uiSample].uiTimeMin;
+			if( pSampleList[uiSample].uiVolMax  < pSampleList[uiSample].uiVolMin  ) pSampleList[uiSample].uiVolMax  = pSampleList[uiSample].uiVolMin;
+			if( pSampleList[uiSample].uiPanMax  < pSampleList[uiSample].uiPanMin  ) pSampleList[uiSample].uiPanMax  = pSampleList[uiSample].uiPanMin;
+
 			// Max instances
 			if(pParms->uiMaxInstances==SOUND_PARMS_DEFAULT)
 				pSampleList[uiSample].uiMaxInstances=1;
@@ -881,6 +888,11 @@ static UINT32 GetFreeSampleSlot(void)
 //*******************************************************************************
 static UINT32 LoadSampleFromFile(STR pFilename)
 {
+	// Sound hardware never came up (MIX device failed to init): don't open,
+	// decode and cache an unusable sample. SoundLockSample reaches here bypassing
+	// SoundLoadSample's !gMixer guard.
+	if( !gMixer ) return( NO_SAMPLE );
+
 	HWFILE	hFile;
 	UINT32	uiSize, uiSample, uiBytesRead;
 	void	*pBuffer;
