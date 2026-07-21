@@ -55,12 +55,15 @@ include_directories(
   "${CMAKE_SOURCE_DIR}/Editor"
   "${CMAKE_SOURCE_DIR}/i18n/include"
   "${CMAKE_SOURCE_DIR}/ext/SDL3/include"
+  "${CMAKE_SOURCE_DIR}/ext/SDL3_mixer/include"
 )
 
-# SDL3 (vendored prebuilt, 32-bit x86 MSVC) replaces DirectDraw / DirectInput /
-# DirectSound / the Win32 window + message pump. Shipped as SDL3.dll next to the
-# exe (built /MD, DLL-safe against this project's static /MT CRT).
+# SDL3 + SDL3_mixer (vendored prebuilt, 32-bit x86 MSVC) replace DirectDraw /
+# DirectInput / DirectSound / FMOD / the Win32 window + message pump. Shipped as
+# SDL3.dll + SDL3_mixer.dll next to the exe (built /MD, DLL-safe against this
+# project's static /MT CRT).
 find_package(SDL3 CONFIG REQUIRED PATHS "${CMAKE_SOURCE_DIR}/ext/SDL3/cmake" NO_DEFAULT_PATH)
+find_package(SDL3_mixer CONFIG REQUIRED PATHS "${CMAKE_SOURCE_DIR}/ext/SDL3_mixer/cmake" NO_DEFAULT_PATH)
 
 # external libraries
 add_subdirectory("ext/libpng")
@@ -167,14 +170,13 @@ foreach(app IN LISTS ApplicationTargets)
   endforeach()
 
   # for SGP only
-  # SDL3 port: ddraw.lib dropped — video.cpp no longer calls DirectDrawCreate /
-  # IID_IDirectDraw2 (the only ddraw.lib import symbols). DirectDraw Calls.cpp /
-  # DirectX Common.cpp stay compiled: they only make COM vtable calls + use
-  # DDERR_* constants (no import symbols) and provide the wrapper symbols a few
-  # dead VObject helpers still reference. fmodvc.lib stays (FMOD audio kept in
-  # phase 1; DirectSound is orthogonal to DirectDraw and still works via the
-  # SDL window's HWND). SDL3 owns the window/video/input.
-  target_link_libraries(${app}_sgp PRIVATE "${PROJECT_SOURCE_DIR}/fmodvc.lib" SDL3::SDL3)
+  # SDL3 port: ddraw.lib dropped (video.cpp no longer calls DirectDrawCreate /
+  # IID_IDirectDraw2, the only ddraw.lib import symbols) and fmodvc.lib dropped
+  # (soundman.cpp is now SDL3_mixer, not FMOD/DirectSound). DirectDraw Calls.cpp
+  # / DirectX Common.cpp stay compiled: they only make COM vtable calls + use
+  # DDERR_* constants (no import symbols) and provide wrapper symbols a few dead
+  # VObject helpers reference. SDL3 owns window/video/input; SDL3_mixer owns audio.
+  target_link_libraries(${app}_sgp PRIVATE SDL3::SDL3 SDL3_mixer::SDL3_mixer)
   target_link_libraries(${app}_sgp PRIVATE libpng)
   target_compile_definitions(${app}_sgp PRIVATE ${compilationFlags} ${debugFlags} NO_ZLIB_COMPRESSION)
 endforeach()
