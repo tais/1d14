@@ -2,13 +2,11 @@
 #define __VIDEO_
 
 #include <windows.h>
-#include <ddraw.h>
-#include <process.h> 
+#include <process.h>
 
 #include "local.h"
 #include "DEBUG.H"
 #include "types.h"
-#include "DirectDraw Calls.h"
 #include "vsurface.h"
 
 #define BUFFER_READY			0x00
@@ -49,11 +47,6 @@ extern void				 InvalidateRegions(SGPRect *pArrayOfRegions, UINT32 uiRegionCount
 extern void				 InvalidateScreen(void);
 extern void				 InvalidateFrameBuffer(void);
 extern void				 SetFrameBufferRefreshOverride(PTR pFrameBufferRefreshOverride);
-extern LPDIRECTDRAW2		GetDirectDraw2Object(void);
-extern LPDIRECTDRAWSURFACE2 GetPrimarySurfaceObject(void);
-extern LPDIRECTDRAWSURFACE2 GetBackBufferObject(void);
-extern LPDIRECTDRAWSURFACE2 GetFrameBufferObject(void);
-extern LPDIRECTDRAWSURFACE2 GetMouseBufferObject(void);
 extern PTR					LockPrimarySurface(UINT32 *uiPitch);
 extern void				 UnlockPrimarySurface(void);
 extern PTR					LockBackBuffer(UINT32 *uiPitch);
@@ -95,7 +88,6 @@ void FatalError( const STR8 pError, ...);
 
 
 extern SGPPaletteEntry			gSgpPalette[256];
-extern LPDIRECTDRAWPALETTE	gpDirectDrawPalette;
 
 /*
 #ifdef __cplusplus

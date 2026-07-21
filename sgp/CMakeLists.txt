@@ -6,8 +6,6 @@ set(sgpSrc
 "${CMAKE_CURRENT_SOURCE_DIR}/DEBUG.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/debug_util.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/debug_win_util.cpp"
-"${CMAKE_CURRENT_SOURCE_DIR}/DirectDraw Calls.cpp"
-"${CMAKE_CURRENT_SOURCE_DIR}/DirectX Common.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/English.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/FileMan.cpp"
 "${CMAKE_CURRENT_SOURCE_DIR}/Font.cpp"

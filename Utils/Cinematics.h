@@ -11,11 +11,9 @@ struct SMKFLIC
 		Smack						*SmackHandle;
 		SmackBuf					*SmackBuffer;
 		UINT32						uiFlags;
-		LPDIRECTDRAWSURFACE2		lpDDS;
 		HWND						hWindow;
 		UINT32						uiFrame;
 		UINT32						uiLeft, uiTop;
-//		LPDIRECTDRAW2				lpDD;
 //		UINT32						uiNumFrames;
 //		UINT8						*pAudioData;
 //		UINT8						*pCueData;
