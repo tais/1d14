@@ -261,12 +261,27 @@ BOOLEAN InitializeVideoManager(HINSTANCE hInstance, UINT16 usCommandShow, void *
 	}
 	SDL_SetRenderVSync( gRenderer, gGameExternalOptions.gfVSync ? 1 : 0 );
 
-	// Establish the fixed SCREEN_WIDTH x SCREEN_HEIGHT logical coordinate space.
-	// LETTERBOX scales aspect-correctly to the window; NEAREST (below) keeps
-	// pixels crisp. Mouse events are mapped back into this space in sgp.cpp's
-	// event pump via SDL_ConvertEventToRenderCoordinates, so gusMouseX/YPos and
-	// the game's hit-testing agree regardless of window size / display scaling.
-	if ( !SDL_SetRenderLogicalPresentation( gRenderer, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_LETTERBOX ) )
+	// Establish the fixed SCREEN_WIDTH x SCREEN_HEIGHT logical coordinate space,
+	// then choose how it scales to the window. Mouse events are mapped back into
+	// this space in sgp.cpp's event pump via SDL_ConvertEventToRenderCoordinates,
+	// so gusMouseX/YPos and hit-testing agree regardless of window size / scaling.
+	//
+	// Default = smooth fit: LETTERBOX (aspect-correct) + LINEAR filtering. The
+	// framebuffer renders at the (usually low) Ja2.ini resolution and SDL upscales
+	// it to the monitor by a fractional factor; NEAREST at a fractional factor
+	// makes some pixels 2px and others 3px wide, producing the shimmery/uneven
+	// look. LINEAR resamples uniformly instead -- a touch softer, but JA2's fonts
+	// are 1-bit bitmap glyphs (no anti-aliasing) so there's no crisp edge to lose.
+	//
+	// Set JA2_PIXEL_PERFECT=1 for the opposite trade: INTEGER_SCALE + NEAREST gives
+	// perfectly uniform, crisp pixels at the cost of larger black borders (best
+	// when the Ja2.ini resolution is an exact integer divisor of the monitor,
+	// e.g. 960x540 -> 2x on 1080p).
+	const BOOLEAN fPixelPerfect = ( SDL_getenv("JA2_PIXEL_PERFECT") != NULL );
+	SDL_RendererLogicalPresentation presMode = fPixelPerfect
+		? SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+		: SDL_LOGICAL_PRESENTATION_LETTERBOX;
+	if ( !SDL_SetRenderLogicalPresentation( gRenderer, SCREEN_WIDTH, SCREEN_HEIGHT, presMode ) )
 	{
 		DebugMsg(TOPIC_VIDEO, DBG_LEVEL_0, String("SDL_SetRenderLogicalPresentation failed: %s", SDL_GetError()));
 	}
@@ -277,7 +292,7 @@ BOOLEAN InitializeVideoManager(HINSTANCE hInstance, UINT16 usCommandShow, void *
 		DebugMsg(TOPIC_VIDEO, DBG_LEVEL_0, String("SDL_CreateTexture failed: %s", SDL_GetError()));
 		return FALSE;
 	}
-	SDL_SetTextureScaleMode( gFrameTex, SDL_SCALEMODE_NEAREST );
+	SDL_SetTextureScaleMode( gFrameTex, fPixelPerfect ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR );
 
 	//
 	// Allocate the heap surfaces (16bpp, no row padding).

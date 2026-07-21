@@ -1972,7 +1972,15 @@ UINT32 uiLineSkipDest, uiLineSkipSrc;
 	{
 		UINT32 surfID = SurfaceData::GetSurfaceID((BYTE*)pDest);
 		ClipRectangle::ClipType ct;
-		if( (ct=g_SurfaceRectangle[surfID].Clip(iDestXPos, iDestYPos,uiWidth, uiHeight)) != ClipRectangle::NoClip )
+		// surfID==0 means the dest pointer isn't registered in SurfaceData -- e.g.
+		// FRAME_BUFFER locked through LockVideoSurfaceBuffer (the surface->surface
+		// blit path in BltVSurfaceUsingDD), which does NOT register the pointer the
+		// way the index-based LockVideoSurface does. Without this guard the clip runs
+		// against g_SurfaceRectangle[0] (an empty 0x0 rect) and FullClip-drops the
+		// whole blit -- which is why opaque MercPopUpBox message-box panels vanished
+		// while their buttons (8bpp VObject path) still drew. The src check below is
+		// already guarded this way; the caller has already clipped the rect to bounds.
+		if( surfID && (ct=g_SurfaceRectangle[surfID].Clip(iDestXPos, iDestYPos,uiWidth, uiHeight)) != ClipRectangle::NoClip )
 		{
 #if _DEBUG
 			WriteMessageToFile(L"Trying to render to outside of destination surface");
