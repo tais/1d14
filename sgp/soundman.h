@@ -2,8 +2,6 @@
 #define __SOUNDMAN_
 
 #include "types.h"
-#include "fmod.h"
-#include "fmod_errors.h"
 
 /*
 #ifdef __cplusplus
