@@ -818,8 +818,8 @@ void KeyChange(UINT32 usParam, UINT32 uiParam, UINT8 ufKeyState)
 		}
 	}
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 
@@ -985,8 +985,8 @@ void GetMousePos(SGPPoint *Point)
 {
 	POINT MousePos;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	Point->iX = (UINT32) MousePos.x;
 	Point->iY = (UINT32) MousePos.y;
@@ -1430,21 +1430,25 @@ void RestrictMouseToXYXY(UINT16 usX1, UINT16 usY1, UINT16 usX2, UINT16 usY2)
 
 void RestrictMouseCursor(SGPRect *pRectangle)
 {
-	// Make a copy of our rect....
+	// SDL3 port: keep the requested clip rect for bookkeeping
+	// (IsCursorRestricted / GetRestrictedClipCursor) but DO NOT physically
+	// confine the OS cursor. The rects passed here are in the game's logical
+	// 640x480-style framebuffer space; with SDL_SetRenderLogicalPresentation the
+	// window is letterboxed/scaled, so ClientToScreen()+ClipCursor() (which
+	// assume a 1:1 client area) would trap the physical cursor in the wrong
+	// desktop region. gusMouseX/YPos (mapped into logical space by SDL) already
+	// tracks the viewport, and the band-select / viewport clipping bound the result.
 	memcpy( &gCursorClipRect, pRectangle, sizeof( gCursorClipRect ) );
-	ClientToScreen( ghWindow, (LPPOINT)&gCursorClipRect);
-	ClientToScreen( ghWindow, ((LPPOINT)&gCursorClipRect)+1);
-	ClipCursor(&gCursorClipRect);
 	fCursorWasClipped = TRUE;
 }
 
 void FreeMouseCursor( BOOLEAN fLockForTacticalWindowedMode )
 {
-	ClipCursor(NULL);
+	// No physical OS-cursor clip on the SDL3 port (see RestrictMouseCursor).
 	fCursorWasClipped = FALSE;
 
-	// Buggler: Need to relock for fullscreen mode as ClipCursor release mouse boundary to full desktop resolution on multi-monitor setup &&
-	// for windowed mode, lockscreen only when player activates feature in tactical screen due to mouse restriction applies to desktop too!
+	// Preserve the original bookkeeping so IsCursorRestricted / gCursorClipRect
+	// stay consistent for callers that query them.
 	if ( !iWindowedMode || ( iWindowedMode && gfMouseLockedOnBorder && fLockForTacticalWindowedMode ) )
 	{
 		SGPRect			LJDRect;
@@ -1459,17 +1463,15 @@ void FreeMouseCursor( BOOLEAN fLockForTacticalWindowedMode )
 
 void RestoreCursorClipRect( void )
 {
-	if ( fCursorWasClipped )
-	{
-		ClipCursor( &gCursorClipRect );
-	}
+	// Was ClipCursor(&gCursorClipRect); no physical clip on the SDL3 port.
 }
 
 void GetRestrictedClipCursor( SGPRect *pRectangle )
 {
-	GetClipCursor((RECT *) pRectangle );
-	ScreenToClient( ghWindow, (LPPOINT)pRectangle);
-	ScreenToClient( ghWindow, ((LPPOINT)pRectangle)+1);
+	// Report the last requested clip rect (logical coords); we no longer query
+	// the OS for a physical clip region.
+	if ( pRectangle )
+		memcpy( pRectangle, &gCursorClipRect, sizeof( gCursorClipRect ) );
 }
 
 BOOLEAN IsCursorRestricted( void )
@@ -1479,11 +1481,10 @@ BOOLEAN IsCursorRestricted( void )
 
 void SimulateMouseMovement( UINT32 uiNewXPos, UINT32 uiNewYPos )
 {
-	POINT newmouse;
-	newmouse.x = uiNewXPos;
-	newmouse.y = uiNewYPos;
-	ClientToScreen( ghWindow, &newmouse);
-	SetCursorPos( newmouse.x, newmouse.y);
+	// SDL3 port: no-op. This warped the physical OS cursor via
+	// ClientToScreen()+SetCursorPos() (e.g. onto a dialog's default button);
+	// with logical-presentation scaling the mapping no longer holds, and warping
+	// the OS cursor would desync it from the SDL-tracked gusMouseX/YPos.
 }
 
 
@@ -1528,8 +1529,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(LEFT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiLeftButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;
@@ -1549,8 +1550,8 @@ void HandleSingleClicksAndButtonRepeats( void )
 			UINT32 uiTmpLParam;
 			POINT	MousePos;
 
-			GetCursorPos(&MousePos);
-			ScreenToClient(ghWindow, &MousePos); // In window coords!
+			MousePos.x = gusMouseXPos;
+			MousePos.y = gusMouseYPos;
 			uiTmpLParam = ((MousePos.y << 16) & 0xffff0000) | (MousePos.x & 0x0000ffff);
 			QueueEvent(RIGHT_BUTTON_REPEAT, 0, uiTmpLParam);
 			guiRightButtonRepeatTimer = uiTimer + BUTTON_REPEAT_TIME;

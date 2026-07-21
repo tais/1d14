@@ -1606,8 +1606,8 @@ void HandleIMPQuizKeyBoard( void )
 	POINT	MousePos;
 	BOOLEAN fSkipFrame = FALSE;
 
-	GetCursorPos(&MousePos);
-	ScreenToClient(ghWindow, &MousePos); // In window coords!
+	MousePos.x = gusMouseXPos;
+	MousePos.y = gusMouseYPos;
 
 	while( ( DequeueEvent(&InputEvent) == TRUE )	)
 	{

@@ -1895,9 +1895,20 @@ BOOLEAN FillSurface( HVSURFACE hDestVSurface, blt_vs_fx *pBltFx )
 	pBuffer = (UINT16 *)LockVideoSurfaceBuffer( hDestVSurface, &uiPitch );
 	CHECKF( pBuffer != NULL );
 
-	// FillRect16BPP is inclusive on x2/y2, so fill the whole surface with
-	// width-1 / height-1. ColorFill is already a 16bpp pixel value.
-	FillRect16BPP( pBuffer, uiPitch, 0, 0, hDestVSurface->usWidth - 1, hDestVSurface->usHeight - 1, (UINT16)pBltFx->ColorFill );
+	// Fill the whole surface directly. Do NOT use FillRect16BPP here: it is
+	// hard-coded for the 640x480 framebuffer (clamps x/y to 639/479) and would
+	// overflow surfaces smaller than that. ColorFill is already a 16bpp pixel.
+	{
+		const UINT16 usColor  = (UINT16)pBltFx->ColorFill;
+		const UINT32 uiPitchPix = uiPitch >> 1;
+		const INT32  iW = hDestVSurface->usWidth;
+		const INT32  iH = hDestVSurface->usHeight;
+		for ( INT32 iY = 0; iY < iH; ++iY )
+		{
+			UINT16 *pRow = pBuffer + (UINT32)iY * uiPitchPix;
+			for ( INT32 iX = 0; iX < iW; ++iX ) pRow[iX] = usColor;
+		}
+	}
 
 	UnLockVideoSurfaceBuffer( hDestVSurface );
 
@@ -1915,8 +1926,29 @@ BOOLEAN FillSurfaceRect( HVSURFACE hDestVSurface, blt_vs_fx *pBltFx )
 	pBuffer = (UINT16 *)LockVideoSurfaceBuffer( hDestVSurface, &uiPitch );
 	CHECKF( pBuffer != NULL );
 
-	// ColorFill is already a 16bpp pixel value.
-	FillRect16BPP( pBuffer, uiPitch, pBltFx->FillRect.iLeft, pBltFx->FillRect.iTop, pBltFx->FillRect.iRight, pBltFx->FillRect.iBottom, (UINT16)pBltFx->ColorFill );
+	// Clamp the fill rect to THIS surface's bounds and fill directly. The caller
+	// (ColorFillVideoSurfaceArea) clips against the global screen clip rect,
+	// which can exceed a small surface (e.g. the AIM video-face); FillRect16BPP
+	// assumes the 640x480 framebuffer and would overflow. ColorFill is 16bpp.
+	{
+		const UINT16 usColor  = (UINT16)pBltFx->ColorFill;
+		const UINT32 uiPitchPix = uiPitch >> 1;
+		const INT32  iW = hDestVSurface->usWidth;
+		const INT32  iH = hDestVSurface->usHeight;
+		INT32 iX1 = pBltFx->FillRect.iLeft;
+		INT32 iY1 = pBltFx->FillRect.iTop;
+		INT32 iX2 = pBltFx->FillRect.iRight;   // exclusive, matching DirectDraw COLORFILL
+		INT32 iY2 = pBltFx->FillRect.iBottom;
+		if ( iX1 < 0 )  iX1 = 0;
+		if ( iY1 < 0 )  iY1 = 0;
+		if ( iX2 > iW ) iX2 = iW;
+		if ( iY2 > iH ) iY2 = iH;
+		for ( INT32 iY = iY1; iY < iY2; ++iY )
+		{
+			UINT16 *pRow = pBuffer + (UINT32)iY * uiPitchPix;
+			for ( INT32 iX = iX1; iX < iX2; ++iX ) pRow[iX] = usColor;
+		}
+	}
 
 	UnLockVideoSurfaceBuffer( hDestVSurface );
 
