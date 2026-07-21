@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <string.h>
+#include <stdio.h>
 #include "sgp.h"
 #include "vobject.h"
 #include "Font.h"
@@ -748,8 +749,59 @@ static int HandledMain(int argc, char** argv)
 			SDL_Event e;
 			while (SDL_PollEvent(&e))
 			{
+				// Opt-in mouse-coordinate diagnostics (set the JA2_MOUSE_DEBUG
+				// environment variable): dumps the window / pixel / render /
+				// logical coordinate spaces once, then every raw-vs-converted
+				// mouse position, to mouse_debug.log in the working dir. Zero
+				// cost unless the env var is set. Used to pin down HiDPI /
+				// display-scaling cursor offsets on real hardware.
+				static const BOOLEAN	gfMouseDbg = (SDL_getenv("JA2_MOUSE_DEBUG") != NULL);
+				static FILE*			pMouseDbgFile = NULL;
+				if (gfMouseDbg && pMouseDbgFile == NULL)
+				{
+					pMouseDbgFile = fopen("mouse_debug.log", "w");
+					if (pMouseDbgFile != NULL)
+					{
+						SDL_Renderer*	r = SGP_GetSDLRenderer();
+						SDL_Window*		w = r ? SDL_GetRenderWindow(r) : NULL;
+						int ww=0,wh=0, pw=0,ph=0, ow=0,oh=0, lw=0,lh=0;
+						SDL_RendererLogicalPresentation lp = SDL_LOGICAL_PRESENTATION_DISABLED;
+						SDL_FRect lr; lr.x=lr.y=lr.w=lr.h=0.f;
+						if (w) { SDL_GetWindowSize(w,&ww,&wh); SDL_GetWindowSizeInPixels(w,&pw,&ph); }
+						if (r) { SDL_GetCurrentRenderOutputSize(r,&ow,&oh);
+						         SDL_GetRenderLogicalPresentation(r,&lw,&lh,&lp);
+						         SDL_GetRenderLogicalPresentationRect(r,&lr); }
+						fprintf(pMouseDbgFile,
+							"config: window=%dx%d windowPx=%dx%d renderOut=%dx%d logical=%dx%d mode=%d rect=(%.1f,%.1f %.1fx%.1f)\n",
+							ww,wh, pw,ph, ow,oh, lw,lh, (int)lp, lr.x,lr.y,lr.w,lr.h);
+						fflush(pMouseDbgFile);
+					}
+				}
+				float	fRawX = 0.f, fRawY = 0.f;
+				const BOOLEAN	fIsMotion = (e.type == SDL_EVENT_MOUSE_MOTION);
+				const BOOLEAN	fIsButton = (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+				                             e.type == SDL_EVENT_MOUSE_BUTTON_UP);
+				if (fIsMotion) { fRawX = e.motion.x; fRawY = e.motion.y; }
+				if (fIsButton) { fRawX = e.button.x; fRawY = e.button.y; }
+
 				if (SGP_GetSDLRenderer())
 					SDL_ConvertEventToRenderCoordinates(SGP_GetSDLRenderer(), &e);
+
+				if (gfMouseDbg && pMouseDbgFile != NULL && fIsMotion)
+				{
+					fprintf(pMouseDbgFile, "motion raw=(%.1f,%.1f) -> conv=(%.1f,%.1f)\n",
+					        fRawX, fRawY, e.motion.x, e.motion.y);
+					fflush(pMouseDbgFile);
+				}
+				if (gfMouseDbg && pMouseDbgFile != NULL && fIsButton)
+				{
+					fprintf(pMouseDbgFile, "button %s raw=(%.1f,%.1f) -> conv=(%.1f,%.1f)  gusMouse=(%d,%d)\n",
+					        e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? "DOWN" : "UP",
+					        fRawX, fRawY, e.button.x, e.button.y,
+					        (int)gusMouseXPos, (int)gusMouseYPos);
+					fflush(pMouseDbgFile);
+				}
+
 				if (SgpHandleSDLEvent(&e))
 					gfProgramIsRunning = FALSE;
 			}
@@ -1224,27 +1276,20 @@ static void PopulateSectionFromCommandLine(vfs::PropertyContainer &oProps, vfs::
 static LONG __stdcall SGPExceptionFilter(int exceptionCount, EXCEPTION_POINTERS* pExceptInfo)
 {
 #ifdef ENABLE_EXCEPTION_HANDLING
-	extern BOOL ERGetFirstModuleException(EXCEPTION_POINTERS*, HMODULE, LPSTR, INT, LPSTR, INT, INT *);
-	extern STR GetExceptionString( DWORD uiExceptionCode );
-	CHAR funcName[64], sourceName[MAX_PATH];
-	INT lineNum = 0;
+	// GetExceptionString() / ERGetFirstModuleException() / _FailMessage() were
+	// never implemented in this codebase. RecordExceptionInfo() (in
+	// debug_win_util.cpp) already writes a symbolized backtrace of the crash to
+	// stack_trace.log, which is what we need; CallGameLoop() then retries a few
+	// times and finally shows the "Unable to recover." box.
 	if (exceptionCount >= 1)
 	{
-		bool showAssert = true;
-		__try{
+		__try
+		{
 			// the exception handler writer can fail with exceptions too
 			RecordExceptionInfo(pExceptInfo);
-
-			LPCSTR exceptMsg = GetExceptionString(pExceptInfo->ExceptionRecord->ExceptionCode);
-			if ( ERGetFirstModuleException(pExceptInfo, NULL, funcName, _countof(funcName), sourceName, _countof(sourceName), &lineNum ) )
-			{
-				_FailMessage(exceptMsg, lineNum, funcName, sourceName);
-				showAssert = false;
-			}
-		} __except (EXCEPTION_EXECUTE_HANDLER) {}
-		if (showAssert) AssertMsg(FALSE, "Unhanded exception processing GameLoop unable to recover.");
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {}
 	}
-
 #endif
 
 	return EXCEPTION_EXECUTE_HANDLER;

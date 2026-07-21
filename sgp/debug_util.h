@@ -46,6 +46,14 @@ private:
 	DISALLOW_EVIL_CONSTRUCTORS(StackTrace);
 };
 
+// Windows structured-exception crash handler, used as the __except filter in
+// sgp.cpp (guarded by ENABLE_EXCEPTION_HANDLING). Walks the stack from the
+// faulting context, symbolizes it via the process's DbgHelp symbols, and
+// appends a backtrace to stack_trace.log (needs the .pdb beside the exe for
+// function names). Returns EXCEPTION_EXECUTE_HANDLER so the handler body runs.
+struct _EXCEPTION_POINTERS;
+long RecordExceptionInfo(struct _EXCEPTION_POINTERS* pExceptInfo);
+
 namespace sgp
 {
 	void dumpStackTrace(vfs::String const& msg);

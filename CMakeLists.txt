@@ -38,6 +38,13 @@ set(usingMsBuild $<STREQUAL:${CMAKE_VS_PLATFORM_NAME},Win32>)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_compile_definitions(CINTERFACE XML_STATIC VFS_STATIC VFS_WITH_SLF VFS_WITH_7ZIP _CRT_SECURE_NO_DEPRECATE)
+
+# Enable the Win32 SEH crash handler (as the original MSBuild release did).
+# Without this, SGPExceptionFilter catches access violations but does NOT call
+# RecordExceptionInfo(), so a crash gives the generic "Unable to recover." box
+# with no stack_trace.log. Defining it makes the handler write a symbolized
+# backtrace (needs the .pdb next to the exe) so crashes can be diagnosed.
+add_compile_definitions(ENABLE_EXCEPTION_HANDLING)
 include_directories(
   "${CMAKE_SOURCE_DIR}/Ja2"
   "${CMAKE_SOURCE_DIR}/ext/VFS/include"
