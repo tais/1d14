@@ -50,12 +50,13 @@
 //
 //*******************************************************************
 
-BINKFLIC BinkList[BINK_NUM_FLICS];					
+BINKFLIC BinkList[BINK_NUM_FLICS];
 UINT32	 guiBinkPixelFormat=0;
 
 //LPDIRECTDRAWSURFACE lpBinkVideoPlayback=NULL;
 LPDIRECTDRAWSURFACE2 lpBinkVideoPlayback2=NULL;
 HWND				hBinkDisplayWindow=0;
+UINT32			guiWidth;
 UINT32			guiHeight;
 
 
@@ -67,18 +68,13 @@ UINT32			guiHeight;
 //*******************************************************************
 
 void			BinkInitialize(HWND hWindow, UINT32 uiWidth, UINT32 uiHeight);
-void			BinkShutdown(void);
-BINKFLIC		*BinkPlayFlic(CHAR8 *cFilename, UINT32 uiLeft, UINT32 uiTop, UINT32 uiFlags );
+BINKFLIC		*BinkPlayFlic(const CHAR8 *cFilename, UINT32 uiLeft, UINT32 uiTop, UINT32 uiFlags );
 BOOLEAN			BinkPollFlics(void);
-BINKFLIC		*BinkOpenFlic(const CHAR8 *cFilename);
-void			BinkSetBlitPosition(BINKFLIC *pBink, UINT32 uiLeft, UINT32 uiTop);
 void			BinkCloseFlic(BINKFLIC *pBink);
-BINKFLIC		*BinkGetFreeFlic(void);
-void			BinkSetupVideo(void);
 void			BinkShutdownVideo(void);
-UINT16			GetNumberOfBits( UINT32 uiMask );
-
-
+static BINKFLIC *BinkOpenFlic(const CHAR8 *cFilename);
+static BINKFLIC *BinkGetFreeFlic(void);
+static void		BinkSetBlitPosition(BINKFLIC *pBink, UINT32 uiLeft, UINT32 uiTop);
 
 
 
@@ -88,328 +84,249 @@ UINT16			GetNumberOfBits( UINT32 uiMask );
 //
 //*******************************************************************
 
-
-
 void				BinkInitialize(HWND hWindow, UINT32 uiWidth, UINT32 uiHeight)
 {
-	//HDIGDRIVER pSoundDriver = NULL;
-	void* pSoundDriver = NULL;
+	memset(BinkList, 0, sizeof(BinkList));
 
-
-	//Get the sound Driver handle
-	pSoundDriver = SoundGetDriverHandle();
-
-	//if we got the sound handle, use sound during the intro
-	if( pSoundDriver )
-	{
-		BinkSoundUseDirectSound( pSoundDriver );
-	}
-
+	hBinkDisplayWindow = hWindow;
+	guiWidth = uiWidth;
 	guiHeight = uiHeight;
+	guiBinkPixelFormat = BINKSURFACE565;
+
+	// The old sound manager supplied a DirectSound object to Bink. SDL3_mixer
+	// deliberately does not expose one, but Bink's own WaveOut backend remains
+	// available in binkw32.dll and keeps embedded movie audio functional.
+	BinkSoundUseWaveOut();
 }
-
-
-void				BinkShutdown(void)
-{
-	UINT32 uiCount;
-
-	// Close and deallocate any open flics
-	for(uiCount=0; uiCount < BINK_NUM_FLICS; uiCount++)
-	{
-		//if the flic is currently open
-		if(BinkList[uiCount].uiFlags & BINK_FLIC_OPEN )
-		{
-			//close it
-			BinkCloseFlic( &BinkList[uiCount] );
-		}
-	}
-}
-
-
 
 BINKFLIC			*BinkPlayFlic(const CHAR8 *cFilename, UINT32 uiLeft, UINT32 uiTop, UINT32 uiFlags )
 {
-	BINKFLIC *pBink;
-
-	// Open the flic
-	if( ( pBink = BinkOpenFlic( cFilename ) ) == NULL )
+	BINKFLIC *pBink = BinkOpenFlic(cFilename);
+	if (pBink == NULL)
 	{
 		return(NULL);
 	}
 
-	if( uiFlags & BINK_FLIC_CENTER_VERTICAL)
+	if (uiFlags & BINK_FLIC_CENTER_VERTICAL)
 	{
-		uiTop = ( guiHeight - pBink->BinkHandle->Height ) / 2;
+		uiTop = guiHeight > pBink->BinkHandle->Height
+			? (guiHeight - pBink->BinkHandle->Height) / 2
+			: 0;
 	}
 
-	// Set the blitting position on the screen
-	BinkSetBlitPosition( pBink, uiLeft, uiTop);
-
-	// We're now playing, flag the flic for the poller to update
+	BinkSetBlitPosition(pBink, uiLeft, uiTop);
 	pBink->uiFlags |= BINK_FLIC_PLAYING;
-
-	if( uiFlags & BINK_FLIC_AUTOCLOSE )
-	{
-		pBink->uiFlags |= BINK_FLIC_AUTOCLOSE;
-	}
-	else
-	{
-		pBink->uiFlags |= BINK_FLIC_LOOP;
-	}
-
+	pBink->uiFlags |= (uiFlags & BINK_FLIC_AUTOCLOSE)
+		? BINK_FLIC_AUTOCLOSE
+		: BINK_FLIC_LOOP;
 
 	return(pBink);
-}
-
-BINKFLIC *BinkOpenFlic( const CHAR8 *cFilename )
-{
-	BINKFLIC *pBink;
-
-	// Get an available flic slot from the list
-	if( !( pBink = BinkGetFreeFlic() ) )
-	{
-		ErrorMsg("BINK ERROR: Out of flic slots, cannot open another");
-		return(NULL);
-	}
-	vfs::Path introname(cFilename);
-	vfs::Path dir,filename;
-	introname.splitLast(dir,filename);
-	vfs::Path tempfile = vfs::Path(L"Temp") + filename;
-	if(!getVFS()->fileExists(tempfile))
-	{
-		try
-		{
-			if(!getVFS()->fileExists(introname))
-			{
-				return NULL;
-			}
-			vfs::COpenReadFile rfile(introname);
-			vfs::size_t size = rfile->getSize();
-			std::vector<vfs::Byte> data(size);
-			rfile->read(&data[0],size);
-
-			vfs::COpenWriteFile wfile(tempfile,true);
-			wfile->write(&data[0],size);
-		}
-		catch(std::exception& ex)
-		{
-			SGP_RETHROW(_BS(L"Intro file \"") << filename << L"\" could not be extracted" << _BS::wget, ex);
-		}
-	}
-
-	vfs::Path tempfilename;
-	try
-	{
-		vfs::COpenWriteFile wfile(tempfile);
-		if(!wfile->_getRealPath(tempfilename))
-		{
-			return NULL;
-		}
-	}
-	catch(std::exception& ex)
-	{
-		SGP_RETHROW(L"Temporary intro file could not be read", ex);
-	}
-	if( !( pBink->BinkHandle = BinkOpen(tempfilename.to_string().c_str(), BINKNOTHREADEDIO /*BINKFILEHANDLE*/ ) ) ) //| SMACKTRACKS 
-	{
-		ErrorMsg("BINK ERROR: Bink won't open the BINK file");
-		return(NULL);
-	}
-
-	// Make sure we have a video surface
-	BinkSetupVideo();
-
-	pBink->cFilename = cFilename;
-
-	pBink->lpDDS = lpBinkVideoPlayback2;
-
-	pBink->hWindow = hBinkDisplayWindow;
-
-	// Bink flic is now open and ready to go
-	pBink->uiFlags |= BINK_FLIC_OPEN;
-
-	return( pBink );
-}
-
-
-
-BINKFLIC *BinkGetFreeFlic()
-{
-	UINT32 uiCount;
-
-	//loop through to get a free slot
-	for( uiCount=0; uiCount < BINK_NUM_FLICS; uiCount++ )
-	{
-		//if this slot is currently not in use
-		if( !( BinkList[uiCount].uiFlags & BINK_FLIC_OPEN ) )
-		{
-			return( &BinkList[ uiCount ] );
-		}
-	}
-
-	return( NULL );
-}
-
-
-void BinkSetBlitPosition( BINKFLIC *pBink, UINT32 uiLeft, UINT32 uiTop )
-{
-	pBink->uiLeft = uiLeft;
-	pBink->uiTop = uiTop;
-}
-	
-void BinkCloseFlic( BINKFLIC *pBink )
-{
-	// Deallocate the smack buffers
-//	SmackBufferClose(pSmack->SmackBuffer);
-
-	// Close the smack flic
-	BinkClose(pBink->BinkHandle);
-
-	// Attempt opening the filename
-	FileClose(pBink->hFileHandle);
-
-	// Zero the memory, flags, etc.
-	memset( pBink, 0, sizeof(BINKFLIC) );
 }
 
 
 BOOLEAN			BinkPollFlics(void)
 {
-	UINT32 uiCount;
-	BOOLEAN fFlicStatus=FALSE;
-	DDSURFACEDESC SurfaceDescription;
-	BINKFLIC *pBink=NULL;
-	UINT32	uiCopyToBufferFlags = guiBinkPixelFormat;
+	BOOLEAN fFlicStatus = FALSE;
 
-	//loop through all the open flics
-	for(uiCount=0; uiCount < BINK_NUM_FLICS; uiCount++)
+	for (UINT32 uiCount = 0; uiCount < BINK_NUM_FLICS; ++uiCount)
 	{
-		pBink = &BinkList[uiCount];
-
-		if( pBink->uiFlags & BINK_FLIC_PLAYING )
+		BINKFLIC *pBink = &BinkList[uiCount];
+		if (!(pBink->uiFlags & BINK_FLIC_PLAYING))
 		{
-			fFlicStatus = TRUE;
+			continue;
+		}
 
-			//do we still have to wait for the frame to be finished being displayed
-			if( !( BinkWait( pBink->BinkHandle ) ) )
+		fFlicStatus = TRUE;
+		if (BinkWait(pBink->BinkHandle))
+		{
+			continue;
+		}
+
+		BinkDoFrame(pBink->BinkHandle);
+
+		UINT32 uiPitch = 0;
+		BYTE *pFrameBuffer = LockVideoSurface(FRAME_BUFFER, &uiPitch);
+		if (pFrameBuffer != NULL)
+		{
+			// The SDL video backend exposes the original CPU-side RGB565 frame
+			// buffer. Decode into it directly, clipping oversized or offset movies
+			// to the logical framebuffer before SDL uploads the next dirty frame.
+			UINT32 uiCopyWidth = pBink->BinkHandle->Width;
+			UINT32 uiCopyHeight = pBink->BinkHandle->Height;
+			if (pBink->uiLeft >= guiWidth || pBink->uiTop >= guiHeight)
 			{
-				DDLockSurface( pBink->lpDDS, NULL, &SurfaceDescription, 0, NULL);
-
-				BinkDoFrame( pBink->BinkHandle );
-
-				BinkCopyToBuffer( pBink->BinkHandle, 
-													SurfaceDescription.lpSurface,
-													SurfaceDescription.lPitch,
-													pBink->BinkHandle->Height,
-													pBink->uiLeft,
-													pBink->uiTop,
-													uiCopyToBufferFlags );
-
-
-				DDUnlockSurface( pBink->lpDDS, SurfaceDescription.lpSurface);
-
-				// Check to see if the flic is done the last frame
-				if( pBink->BinkHandle->FrameNum == ( pBink->BinkHandle->Frames-1 ) )
-				{
-					// If flic is looping, reset frame to 0
-					if( pBink->uiFlags & BINK_FLIC_LOOP)
-					{
-						BinkGoto( pBink->BinkHandle, 0, 0 );
-					}
-					else if( pBink->uiFlags & BINK_FLIC_AUTOCLOSE)
-					{
-						BinkCloseFlic( pBink );
-					}
-				}
-				else
-				{
-					BinkNextFrame( BinkList[uiCount].BinkHandle );
-				}
-
+				uiCopyWidth = 0;
+				uiCopyHeight = 0;
 			}
+			else
+			{
+				if (uiCopyWidth > guiWidth - pBink->uiLeft)
+					uiCopyWidth = guiWidth - pBink->uiLeft;
+				if (uiCopyHeight > guiHeight - pBink->uiTop)
+					uiCopyHeight = guiHeight - pBink->uiTop;
+			}
+
+			if (uiCopyWidth != 0 && uiCopyHeight != 0)
+			{
+				BinkCopyToBufferRect(pBink->BinkHandle,
+					pFrameBuffer,
+					(S32)uiPitch,
+					guiHeight,
+					pBink->uiLeft,
+					pBink->uiTop,
+					0,
+					0,
+					uiCopyWidth,
+					uiCopyHeight,
+					guiBinkPixelFormat);
+			}
+			UnLockVideoSurface(FRAME_BUFFER);
+		}
+
+		// Bink frame numbers are one-based. Display the final frame before
+		// either closing the movie or returning a loop to frame one.
+		if (pBink->BinkHandle->FrameNum >= pBink->BinkHandle->Frames)
+		{
+			if (pBink->uiFlags & BINK_FLIC_LOOP)
+			{
+				BinkGoto(pBink->BinkHandle, 1, 0);
+			}
+			else if (pBink->uiFlags & BINK_FLIC_AUTOCLOSE)
+			{
+				BinkCloseFlic(pBink);
+			}
+		}
+		else
+		{
+			BinkNextFrame(pBink->BinkHandle);
 		}
 	}
 
-	return( fFlicStatus );
+	return(fFlicStatus);
 }
 
 
-
-void				BinkSetupVideo(void)
+void BinkCloseFlic( BINKFLIC *pBink )
 {
-	DDSURFACEDESC SurfaceDescription;
-	HRESULT ReturnCode;
-	UINT16 usRed, usGreen, usBlue;
-	HVSURFACE hVSurface;
-
-	GetVideoSurface( &hVSurface, FRAME_BUFFER );
-
-	lpBinkVideoPlayback2 = GetVideoSurfaceDDSurface( hVSurface );
-
-  ZEROMEM(SurfaceDescription);
-  SurfaceDescription.dwSize = sizeof (DDSURFACEDESC);
-
-  ReturnCode = IDirectDrawSurface2_GetSurfaceDesc ( lpBinkVideoPlayback2, &SurfaceDescription );
-  if (ReturnCode != DD_OK)
-  {
-    DirectXAttempt ( ReturnCode, __LINE__, __FILE__ );
-    return;
-  }
- /* 
-	usRed   = (UINT16) SurfaceDescription.ddpfPixelFormat.dwRBitMask;
-	usGreen = (UINT16) SurfaceDescription.ddpfPixelFormat.dwGBitMask;
-	usBlue  = (UINT16) SurfaceDescription.ddpfPixelFormat.dwBBitMask;
-
-//	SurfaceDescription.ddpfPixelFormat
-
-	if((usRed==0xf800) && (usGreen==0x07e0) && (usBlue==0x001f))
-		guiBinkPixelFormat = BINKSURFACE565;
-	else
-		guiBinkPixelFormat = BINKSURFACE555;
-*/
-	//
-	// Get bit count for the RGB
-	//
-	usRed = GetNumberOfBits( SurfaceDescription.ddpfPixelFormat.dwRBitMask );
-	usGreen = GetNumberOfBits( SurfaceDescription.ddpfPixelFormat.dwGBitMask );
-	usBlue = GetNumberOfBits( SurfaceDescription.ddpfPixelFormat.dwBBitMask );
-
-	// 555
-	if( usRed == 5 && usGreen == 5 && usBlue == 5 )
+	if (pBink == NULL)
 	{
-		guiBinkPixelFormat = BINKSURFACE555;
-	}
-	//565
-	else if( usRed == 5 && usGreen == 6 && usBlue == 5 )
-	{
-		guiBinkPixelFormat = BINKSURFACE565;
-	}
-	//655
-	else if( usRed == 6 && usGreen == 5 && usBlue == 5 )
-	{
-		guiBinkPixelFormat = BINKSURFACE655;
+		return;
 	}
 
-	//dont know the format, wont get video
-	else
+	if (pBink->BinkHandle != NULL)
 	{
-		guiBinkPixelFormat = 0;
+		BinkClose(pBink->BinkHandle);
 	}
+	if (pBink->hFileHandle != 0)
+	{
+		FileClose(pBink->hFileHandle);
+	}
+
+	memset(pBink, 0, sizeof(BINKFLIC));
 }
 
-UINT16 GetNumberOfBits( UINT32 uiMask )
-{
-  UINT16 usBits = 0;
-
-  while( uiMask )
-  {
-      uiMask = uiMask & ( uiMask - 1 );  
-      usBits++;
-  }
-  return usBits;
-}
- 
 
 void				BinkShutdownVideo(void)
 {
+	for (UINT32 uiCount = 0; uiCount < BINK_NUM_FLICS; ++uiCount)
+	{
+		if (BinkList[uiCount].uiFlags & BINK_FLIC_OPEN)
+		{
+			BinkCloseFlic(&BinkList[uiCount]);
+		}
+	}
+}
+
+
+static BINKFLIC *BinkOpenFlic(const CHAR8 *cFilename)
+{
+	BINKFLIC *pBink = BinkGetFreeFlic();
+	if (pBink == NULL)
+	{
+		ErrorMsg("BINK ERROR: Out of flic slots, cannot open another");
+		return(NULL);
+	}
+
+	// Bink opens a real filesystem path. Extract files supplied by the VFS
+	// (including files inside SLF archives) into Temp, matching the Smacker path.
+	vfs::Path introName(cFilename);
+	vfs::Path directory;
+	vfs::Path filename;
+	introName.splitLast(directory, filename);
+	vfs::Path tempFile = vfs::Path(L"Temp") + filename;
+
+	if (!getVFS()->fileExists(tempFile))
+	{
+		try
+		{
+			if (!getVFS()->fileExists(introName))
+			{
+				return(NULL);
+			}
+
+			vfs::COpenReadFile sourceFile(introName);
+			vfs::size_t size = sourceFile->getSize();
+			std::vector<vfs::Byte> data(size);
+			if (size != 0)
+			{
+				sourceFile->read(&data[0], size);
+			}
+
+			vfs::COpenWriteFile destinationFile(tempFile, true);
+			if (size != 0)
+			{
+				destinationFile->write(&data[0], size);
+			}
+		}
+		catch (std::exception& ex)
+		{
+			SGP_RETHROW(_BS(L"Intro file \"") << filename << L"\" could not be extracted" << _BS::wget, ex);
+		}
+	}
+
+	vfs::Path realPath;
+	try
+	{
+		vfs::COpenWriteFile tempFileHandle(tempFile);
+		if (!tempFileHandle->_getRealPath(realPath))
+		{
+			return(NULL);
+		}
+	}
+	catch (std::exception& ex)
+	{
+		SGP_RETHROW(L"Temporary intro file could not be read", ex);
+	}
+
+	pBink->BinkHandle = BinkOpen(realPath.to_string().c_str(), BINKNOTHREADEDIO);
+	if (pBink->BinkHandle == NULL)
+	{
+		ErrorMsg("BINK ERROR: Bink won't open the BINK file");
+		return(NULL);
+	}
+
+	pBink->cFilename = cFilename;
+	pBink->hWindow = hBinkDisplayWindow;
+	pBink->uiFlags |= BINK_FLIC_OPEN;
+	return(pBink);
+}
+
+
+static BINKFLIC *BinkGetFreeFlic(void)
+{
+	for (UINT32 uiCount = 0; uiCount < BINK_NUM_FLICS; ++uiCount)
+	{
+		if (!(BinkList[uiCount].uiFlags & BINK_FLIC_OPEN))
+		{
+			return(&BinkList[uiCount]);
+		}
+	}
+	return(NULL);
+}
+
+
+static void BinkSetBlitPosition(BINKFLIC *pBink, UINT32 uiLeft, UINT32 uiTop)
+{
+	pBink->uiLeft = uiLeft;
+	pBink->uiTop = uiTop;
 }
